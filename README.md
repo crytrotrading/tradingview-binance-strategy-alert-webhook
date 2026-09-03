@@ -26,11 +26,18 @@ currently sees, so an empty chart can be told apart from a broken script. While
 no dragon is present it reads "ยังไม่พบโครงสร้างมังกร" and pivot markers still
 appear on the chart.
 
-If no setup is ever found on your market, loosen the structure settings: raise
-the foot tolerance and the maximum rear-foot undercut, lower the minimum head
-drop and the minimum back retracement, or reduce the pivot bars so smaller
-swings qualify. Note that pivots are only confirmed `rightBars` bars after they
-form, so the dragon anatomy is drawn with that delay.
+The defaults are tuned to be selective: the head must be the highest stored
+pivot, the drop from head to front foot must be at least 3% and 3 ATR, a new
+dragon must start after the previous signal, and there is a 40-bar cooldown
+between signals. Only the latest dragon is kept on the chart and labels are
+compact with Entry/SL/TP in the tooltip; both behaviours can be switched off
+in the display settings.
+
+If signals are too frequent, raise the pivot bars, the minimum head drop, or
+the cooldown. If no setup is ever found on your market, do the opposite: lower
+the pivot bars and the minimum head drop, raise the foot tolerance, or disable
+"major head". Pivots are only confirmed `rightBars` bars after they form, so
+the dragon anatomy is drawn with that delay.
 
 ## YouTube tutorial on how to use this code
 

@@ -77,6 +77,7 @@ if newPivotType != 0
             if isMoreExtreme
                 array.set(pivotPrices, lastIndex, newPivotPrice)
                 array.set(pivotBars, lastIndex, newPivotBar)
+                pivotAdded := true
         else
             array.push(pivotPrices, newPivotPrice)
             array.push(pivotBars, newPivotBar)

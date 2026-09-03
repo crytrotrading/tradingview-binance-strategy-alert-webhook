@@ -17,10 +17,20 @@ and Risk/Reward Target levels. It also exposes TradingView alerts for confirmed
 breakouts and invalidated setups.
 
 To install it, open TradingView's Pine Editor, paste the contents of
-`dragon_pattern_indicator.pine`, save, and select **Add to chart**. Start with
-the default settings, then adjust Pivot bars and foot tolerance to the market
-and timeframe. Alerts should use **Once Per Bar Close** because the setup is
-defined by closing-price confirmation.
+`dragon_pattern_indicator.pine`, save, and select **Add to chart**. Alerts
+should use **Once Per Bar Close** because the setup is defined by closing-price
+confirmation.
+
+A status table in the top-right corner always reports what the indicator
+currently sees, so an empty chart can be told apart from a broken script. While
+no dragon is present it reads "ยังไม่พบโครงสร้างมังกร" and pivot markers still
+appear on the chart.
+
+If no setup is ever found on your market, loosen the structure settings: raise
+the foot tolerance and the maximum rear-foot undercut, lower the minimum head
+drop and the minimum back retracement, or reduce the pivot bars so smaller
+swings qualify. Note that pivots are only confirmed `rightBars` bars after they
+form, so the dragon anatomy is drawn with that delay.
 
 ## YouTube tutorial on how to use this code
 

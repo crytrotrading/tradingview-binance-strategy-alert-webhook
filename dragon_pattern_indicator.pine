@@ -1,19 +1,21 @@
 //@version=6
-indicator("Dragon Pattern Reversal [BIG SHOT]", shorttitle="Dragon Pattern", overlay=true, max_lines_count=100, max_labels_count=100)
+indicator("Dragon Pattern Reversal [BIG SHOT]", shorttitle="Dragon Pattern", overlay=true, max_lines_count=500, max_labels_count=500)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings
 // ─────────────────────────────────────────────────────────────────────────────
 groupStructure = "1. โครงสร้างมังกร"
-leftBars        = input.int(5, "Pivot bars ด้านซ้าย", minval=1, group=groupStructure)
-rightBars       = input.int(5, "Pivot bars ด้านขวา", minval=1, group=groupStructure)
-footTolerance   = input.float(5.0, "ระยะห่างขาหน้า–ขาหลังสูงสุด (%)", minval=0.1, step=0.1, group=groupStructure) / 100.0
-maxUndercut     = input.float(1.0, "ขาหลังหลุดขาหน้าได้สูงสุด (%)", minval=0.0, step=0.1, group=groupStructure) / 100.0
-minBackRetrace  = input.float(30.0, "หลังต้องเด้งอย่างน้อยของช่วงหัว–ขาหน้า (%)", minval=1.0, maxval=99.0, step=1.0, group=groupStructure) / 100.0
-breakoutAtr     = input.float(0.10, "Breakout buffer (ATR)", minval=0.0, step=0.05, group=groupStructure)
+leftBars        = input.int(3, "Pivot bars ด้านซ้าย", minval=1, group=groupStructure)
+rightBars       = input.int(3, "Pivot bars ด้านขวา", minval=1, group=groupStructure)
+minHeadDrop     = input.float(1.0, "ราคาลงจากหัวขั้นต่ำ (%)", minval=0.0, step=0.1, group=groupStructure) / 100.0
+minBackRetrace  = input.float(20.0, "หลังต้องเด้งอย่างน้อยของช่วงหัว–ขาหน้า (%)", minval=1.0, maxval=99.0, step=1.0, group=groupStructure) / 100.0
+footTolerance   = input.float(8.0, "ระยะห่างขาหน้า–ขาหลังสูงสุด (%)", minval=0.1, step=0.1, group=groupStructure) / 100.0
+maxUndercut     = input.float(3.0, "ขาหลังหลุดขาหน้าได้สูงสุด (%)", minval=0.0, step=0.1, group=groupStructure) / 100.0
+breakoutAtr     = input.float(0.05, "Breakout buffer (ATR)", minval=0.0, step=0.05, group=groupStructure)
+maxWaitBars     = input.int(60, "รอ Breakout ได้ไม่เกิน (แท่ง)", minval=5, group=groupStructure)
 
 groupConfirm    = "2. ตัวกรองยืนยัน"
-useVolume       = input.bool(true, "ใช้ Volume ยืนยัน", group=groupConfirm)
+useVolume       = input.bool(false, "ใช้ Volume ยืนยัน", group=groupConfirm)
 volumeLength    = input.int(20, "ค่าเฉลี่ย Volume", minval=1, group=groupConfirm)
 volumeMultiple  = input.float(1.2, "Volume ต้องมากกว่าค่าเฉลี่ย (เท่า)", minval=0.1, step=0.1, group=groupConfirm)
 useTrend        = input.bool(false, "ให้ราคาปิดเหนือ EMA", group=groupConfirm)
@@ -26,8 +28,9 @@ riskReward      = input.float(2.0, "Risk : Reward", minval=0.1, step=0.1, group=
 projectionBars  = input.int(30, "ระยะเส้น Entry/SL/TP (แท่ง)", minval=5, maxval=500, group=groupRisk)
 
 groupDisplay    = "4. การแสดงผล"
+showTable       = input.bool(true, "แสดงตารางสถานะ", group=groupDisplay)
+showPivotMarks  = input.bool(true, "แสดง Pivot ที่ตรวจพบ", group=groupDisplay)
 showEma         = input.bool(false, "แสดง EMA", group=groupDisplay)
-showPivotMarks  = input.bool(false, "แสดง Pivot ที่ตรวจพบทั้งหมด", group=groupDisplay)
 highlightSetup  = input.bool(true, "ไฮไลต์เมื่อพบโครงสร้าง", group=groupDisplay)
 
 atr = ta.atr(atrLength)
@@ -37,18 +40,18 @@ volumeAverage = ta.sma(volume, volumeLength)
 plot(showEma ? ema : na, "EMA", color=color.new(color.blue, 20))
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Keep alternating confirmed pivots. A stronger pivot replaces the previous
-// pivot of the same type. Type 1 = high, type -1 = low.
+// Confirmed pivots, kept strictly alternating. A more extreme pivot replaces the
+// previous pivot on the same side. Type 1 = high, type -1 = low.
 // ─────────────────────────────────────────────────────────────────────────────
 pivotHigh = ta.pivothigh(high, leftBars, rightBars)
 pivotLow  = ta.pivotlow(low, leftBars, rightBars)
 
-var pivotPrices = array.new_float()
-var pivotBars   = array.new_int()
-var pivotTypes  = array.new_int()
+var array<float> pivotPrices = array.new_float()
+var array<int>   pivotBars   = array.new_int()
+var array<int>   pivotTypes  = array.new_int()
 
 float newPivotPrice = na
-int newPivotBar = na
+int newPivotBar = 0
 int newPivotType = 0
 
 if not na(pivotHigh)
@@ -60,14 +63,14 @@ else if not na(pivotLow)
     newPivotBar := bar_index - rightBars
     newPivotType := -1
 
-bool pivotAdded = false
+bool pivotsChanged = false
 if newPivotType != 0
     int pivotCount = array.size(pivotTypes)
     if pivotCount == 0
         array.push(pivotPrices, newPivotPrice)
         array.push(pivotBars, newPivotBar)
         array.push(pivotTypes, newPivotType)
-        pivotAdded := true
+        pivotsChanged := true
     else
         int lastIndex = pivotCount - 1
         int lastType = array.get(pivotTypes, lastIndex)
@@ -77,29 +80,29 @@ if newPivotType != 0
             if isMoreExtreme
                 array.set(pivotPrices, lastIndex, newPivotPrice)
                 array.set(pivotBars, lastIndex, newPivotBar)
-                pivotAdded := true
+                pivotsChanged := true
         else
             array.push(pivotPrices, newPivotPrice)
             array.push(pivotBars, newPivotBar)
             array.push(pivotTypes, newPivotType)
-            pivotAdded := true
-            if array.size(pivotTypes) > 12
+            pivotsChanged := true
+            if array.size(pivotTypes) > 14
                 array.shift(pivotPrices)
                 array.shift(pivotBars)
                 array.shift(pivotTypes)
 
-plotshape(showPivotMarks and not na(pivotHigh), "Pivot High", shape.triangledown, location.abovebar, color=color.new(color.red, 30), size=size.tiny, offset=-rightBars)
-plotshape(showPivotMarks and not na(pivotLow), "Pivot Low", shape.triangleup, location.belowbar, color=color.new(color.lime, 30), size=size.tiny, offset=-rightBars)
+plotshape(showPivotMarks and not na(pivotHigh), "Pivot High", shape.triangledown, location.abovebar, color=color.new(color.red, 40), size=size.tiny, offset=-rightBars)
+plotshape(showPivotMarks and not na(pivotLow), "Pivot Low", shape.triangleup, location.belowbar, color=color.new(color.lime, 40), size=size.tiny, offset=-rightBars)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Candidate: Head (H) → Front foot (L) → Back (H) → Rear foot (L).
-// The signal only fires after price closes above the back with confirmations.
+// Candidate structure: Head (H) → Front foot (L) → Back (H) → Rear foot (L).
+// The buy signal only fires once price closes above the back of the dragon.
 // ─────────────────────────────────────────────────────────────────────────────
-var bool candidateActive = false
-var float candidateFront = na
+var bool  candidateActive = false
 var float candidateBack = na
-var float candidateRear = na
-var int candidateRearBar = na
+var float candidateBase = na
+var int   candidateRearBar = -1
+var int   candidateBornBar = -1
 
 var line neckLine = na
 var line frontToBackLine = na
@@ -111,100 +114,147 @@ var label frontLabel = na
 var label backLabel = na
 var label rearLabel = na
 
-if pivotAdded and array.size(pivotTypes) >= 4
+if pivotsChanged and array.size(pivotTypes) >= 4
     int count = array.size(pivotTypes)
-    int iHead = count - 4
-    int iFront = count - 3
-    int iBack = count - 2
     int iRear = count - 1
+    int iBack = count - 2
+    int iFront = count - 3
 
-    int headType = array.get(pivotTypes, iHead)
-    int frontType = array.get(pivotTypes, iFront)
-    int backType = array.get(pivotTypes, iBack)
-    int rearType = array.get(pivotTypes, iRear)
+    bool shapeOk = array.get(pivotTypes, iRear) == -1 and array.get(pivotTypes, iBack) == 1 and array.get(pivotTypes, iFront) == -1
 
-    float headPrice = array.get(pivotPrices, iHead)
-    float frontPrice = array.get(pivotPrices, iFront)
-    float backPrice = array.get(pivotPrices, iBack)
-    float rearPrice = array.get(pivotPrices, iRear)
-    int headBar = array.get(pivotBars, iHead)
-    int frontBar = array.get(pivotBars, iFront)
-    int backBar = array.get(pivotBars, iBack)
-    int rearBar = array.get(pivotBars, iRear)
+    if shapeOk
+        float rearPrice = array.get(pivotPrices, iRear)
+        float backPrice = array.get(pivotPrices, iBack)
+        float frontPrice = array.get(pivotPrices, iFront)
+        int rearBar = array.get(pivotBars, iRear)
+        int backBar = array.get(pivotBars, iBack)
+        int frontBar = array.get(pivotBars, iFront)
 
-    float headToFront = headPrice - frontPrice
-    float feetDistance = math.abs(rearPrice - frontPrice) / frontPrice
-    bool correctSequence = headType == 1 and frontType == -1 and backType == 1 and rearType == -1
-    bool validHeadAndBack = headPrice > backPrice and headToFront > syminfo.mintick
-    bool validBackBounce = backPrice >= frontPrice + headToFront * minBackRetrace
-    bool validFeet = feetDistance <= footTolerance and rearPrice >= frontPrice * (1.0 - maxUndercut)
-    bool dragonFound = correctSequence and validHeadAndBack and validBackBounce and validFeet
+        // The head is the highest pivot high before the front foot, and it must
+        // stay above the back so the dragon keeps its lower-high shape.
+        int headIndex = -1
+        float headPrice = na
+        for i = 0 to iFront - 1
+            if array.get(pivotTypes, i) == 1
+                float possibleHead = array.get(pivotPrices, i)
+                if possibleHead > backPrice and (headIndex == -1 or possibleHead > headPrice)
+                    headIndex := i
+                    headPrice := possibleHead
 
-    if dragonFound and rearBar != candidateRearBar
-        candidateActive := true
-        candidateFront := frontPrice
-        candidateBack := backPrice
-        candidateRear := rearPrice
-        candidateRearBar := rearBar
+        if headIndex >= 0
+            int headBar = array.get(pivotBars, headIndex)
+            float headToFront = headPrice - frontPrice
+            float feetDistance = math.abs(rearPrice - frontPrice) / frontPrice
+            bool deepEnoughDrop = headToFront > 0 and headToFront >= headPrice * minHeadDrop
+            bool validBackBounce = backPrice >= frontPrice + headToFront * minBackRetrace
+            bool validFeet = feetDistance <= footTolerance and rearPrice >= frontPrice * (1.0 - maxUndercut)
 
-        line.delete(neckLine)
-        line.delete(frontToBackLine)
-        line.delete(backToRearLine)
-        line.delete(resistanceLine)
-        label.delete(headLabel)
-        label.delete(neckLabel)
-        label.delete(frontLabel)
-        label.delete(backLabel)
-        label.delete(rearLabel)
+            if deepEnoughDrop and validBackBounce and validFeet and rearBar != candidateRearBar
+                line.delete(neckLine)
+                line.delete(frontToBackLine)
+                line.delete(backToRearLine)
+                line.delete(resistanceLine)
+                label.delete(headLabel)
+                label.delete(neckLabel)
+                label.delete(frontLabel)
+                label.delete(backLabel)
+                label.delete(rearLabel)
 
-        neckLine := line.new(headBar, headPrice, frontBar, frontPrice, color=color.new(color.orange, 0), width=2)
-        frontToBackLine := line.new(frontBar, frontPrice, backBar, backPrice, color=color.new(color.orange, 0), width=2)
-        backToRearLine := line.new(backBar, backPrice, rearBar, rearPrice, color=color.new(color.orange, 0), width=2)
-        resistanceLine := line.new(backBar, backPrice, bar_index, backPrice, extend=extend.right, color=color.new(color.red, 10), style=line.style_dashed, width=2)
+                candidateActive := true
+                candidateBack := backPrice
+                candidateBase := math.min(frontPrice, rearPrice)
+                candidateRearBar := rearBar
+                candidateBornBar := bar_index
 
-        headLabel := label.new(headBar, headPrice, "หัว", style=label.style_label_down, color=color.red, textcolor=color.white)
-        neckLabel := label.new(int(math.round((headBar + frontBar) / 2.0)), (headPrice + frontPrice) / 2.0, "คอ", style=label.style_label_left, color=color.new(color.orange, 15), textcolor=color.white)
-        frontLabel := label.new(frontBar, frontPrice, "ขาหน้า", style=label.style_label_up, color=color.new(color.green, 0), textcolor=color.white)
-        backLabel := label.new(backBar, backPrice, "หลัง", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.white)
-        rearLabel := label.new(rearBar, rearPrice, "ขาหลัง", style=label.style_label_up, color=color.new(color.green, 0), textcolor=color.white)
+                neckLine := line.new(headBar, headPrice, frontBar, frontPrice, color=color.orange, width=2)
+                frontToBackLine := line.new(frontBar, frontPrice, backBar, backPrice, color=color.orange, width=2)
+                backToRearLine := line.new(backBar, backPrice, rearBar, rearPrice, color=color.orange, width=2)
+                resistanceLine := line.new(backBar, backPrice, bar_index, backPrice, extend=extend.right, color=color.new(color.red, 10), style=line.style_dashed, width=2)
 
-// Invalidate a candidate if the closing structure decisively loses both feet.
-float basePrice = math.min(candidateFront, candidateRear)
-bool setupInvalidated = candidateActive and close < basePrice - atr * stopAtr
-if setupInvalidated
+                headLabel := label.new(headBar, headPrice, "หัว", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+                neckLabel := label.new(int(math.avg(headBar, frontBar)), math.avg(headPrice, frontPrice), "คอ", style=label.style_label_left, color=color.new(color.orange, 15), textcolor=color.white, size=size.small)
+                frontLabel := label.new(frontBar, frontPrice, "ขาหน้า", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+                backLabel := label.new(backBar, backPrice, "หลัง", style=label.style_label_down, color=color.orange, textcolor=color.white, size=size.small)
+                rearLabel := label.new(rearBar, rearPrice, "ขาหลัง", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+float stopPrice = candidateActive ? candidateBase - atr * stopAtr : na
+bool setupBroken = candidateActive and close < stopPrice
+bool setupExpired = candidateActive and not setupBroken and bar_index - candidateBornBar > maxWaitBars
+
+if setupBroken or setupExpired
     candidateActive := false
+    line.delete(neckLine)
+    line.delete(frontToBackLine)
+    line.delete(backToRearLine)
+    line.delete(resistanceLine)
+    label.delete(headLabel)
+    label.delete(neckLabel)
+    label.delete(frontLabel)
+    label.delete(backLabel)
+    label.delete(rearLabel)
 
-bool priceBreakout = candidateActive and bar_index > candidateRearBar and close > candidateBack + atr * breakoutAtr
+bool priceBreakout = candidateActive and close > candidateBack + atr * breakoutAtr
 bool volumeConfirmed = not useVolume or na(volume) or na(volumeAverage) or volume > volumeAverage * volumeMultiple
 bool trendConfirmed = not useTrend or close > ema
 bool dragonBreakout = priceBreakout and volumeConfirmed and trendConfirmed
 
-var line entryLine = na
-var line stopLine = na
-var line targetLine = na
-var label tailLabel = na
+var int lastSignalBar = -1
 
 if dragonBreakout
-    candidateActive := false
     float entryPrice = close
-    float stopPrice = basePrice - atr * stopAtr
     float risk = entryPrice - stopPrice
     float targetPrice = entryPrice + risk * riskReward
 
-    line.delete(entryLine)
-    line.delete(stopLine)
-    line.delete(targetLine)
-    label.delete(tailLabel)
+    if not na(resistanceLine)
+        line.set_x2(resistanceLine, bar_index)
+        line.set_extend(resistanceLine, extend.none)
 
-    entryLine := line.new(bar_index, entryPrice, bar_index + projectionBars, entryPrice, color=color.blue, width=2)
-    stopLine := line.new(bar_index, stopPrice, bar_index + projectionBars, stopPrice, color=color.red, width=2)
-    targetLine := line.new(bar_index, targetPrice, bar_index + projectionBars, targetPrice, color=color.lime, width=2)
-    tailLabel := label.new(bar_index, high, "หาง / BUY\nEntry " + str.tostring(entryPrice, format.mintick) + "\nSL " + str.tostring(stopPrice, format.mintick) + "\nTP " + str.tostring(targetPrice, format.mintick), style=label.style_label_down, color=color.lime, textcolor=color.black)
+    line.new(bar_index, entryPrice, bar_index + projectionBars, entryPrice, color=color.blue, width=2)
+    line.new(bar_index, stopPrice, bar_index + projectionBars, stopPrice, color=color.red, width=2)
+    line.new(bar_index, targetPrice, bar_index + projectionBars, targetPrice, color=color.lime, width=2)
+    label.new(bar_index, high, "หาง / BUY\nEntry " + str.tostring(entryPrice, format.mintick) + "\nSL " + str.tostring(stopPrice, format.mintick) + "\nTP " + str.tostring(targetPrice, format.mintick), style=label.style_label_down, color=color.lime, textcolor=color.black, size=size.small)
 
-// Visual state and alerts.
-bgcolor(highlightSetup and candidateActive ? color.new(color.orange, 91) : na, title="Dragon setup active")
-plotshape(dragonBreakout, title="Dragon breakout", style=shape.labelup, location=location.belowbar, color=color.lime, text="DRAGON\nBUY", textcolor=color.black, size=size.small)
-plotshape(setupInvalidated, title="Dragon invalidated", style=shape.xcross, location=location.belowbar, color=color.red, size=size.tiny)
+    // Keep the drawings of a confirmed dragon on the chart as history.
+    neckLine := na
+    frontToBackLine := na
+    backToRearLine := na
+    resistanceLine := na
+    headLabel := na
+    neckLabel := na
+    frontLabel := na
+    backLabel := na
+    rearLabel := na
+
+    candidateActive := false
+    lastSignalBar := bar_index
+
+bgcolor(highlightSetup and candidateActive ? color.new(color.orange, 90) : na, title="Dragon setup active")
+plotshape(dragonBreakout, title="Dragon breakout", style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.small)
+plotshape(setupBroken, title="Dragon invalidated", style=shape.xcross, location=location.belowbar, color=color.red, size=size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status panel, so the chart always shows what the indicator currently sees.
+// ─────────────────────────────────────────────────────────────────────────────
+var table statusTable = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 20), border_color=color.new(color.gray, 50), border_width=1)
+
+if showTable and barstate.islast
+    string stateText = candidateActive ? "พบโครงสร้าง รอเบรกแนวต้าน" : "ยังไม่พบโครงสร้างมังกร"
+    color stateColor = candidateActive ? color.orange : color.silver
+    string resistanceText = candidateActive ? str.tostring(candidateBack, format.mintick) : "-"
+    string baseText = candidateActive ? str.tostring(candidateBase, format.mintick) : "-"
+    string signalText = lastSignalBar >= 0 ? str.tostring(bar_index - lastSignalBar) + " แท่งก่อน" : "ยังไม่มี"
+    string pivotText = str.tostring(array.size(pivotTypes)) + " จุด"
+
+    table.cell(statusTable, 0, 0, "🐉 Dragon Pattern", text_color=color.white, text_size=size.small, text_halign=text.align_left)
+    table.cell(statusTable, 1, 0, timeframe.period, text_color=color.white, text_size=size.small, text_halign=text.align_right)
+    table.cell(statusTable, 0, 1, "สถานะ", text_color=color.gray, text_size=size.small, text_halign=text.align_left)
+    table.cell(statusTable, 1, 1, stateText, text_color=stateColor, text_size=size.small, text_halign=text.align_right)
+    table.cell(statusTable, 0, 2, "แนวต้าน (หลัง)", text_color=color.gray, text_size=size.small, text_halign=text.align_left)
+    table.cell(statusTable, 1, 2, resistanceText, text_color=color.red, text_size=size.small, text_halign=text.align_right)
+    table.cell(statusTable, 0, 3, "ฐาน (ขาหน้า/ขาหลัง)", text_color=color.gray, text_size=size.small, text_halign=text.align_left)
+    table.cell(statusTable, 1, 3, baseText, text_color=color.lime, text_size=size.small, text_halign=text.align_right)
+    table.cell(statusTable, 0, 4, "Pivot / สัญญาณล่าสุด", text_color=color.gray, text_size=size.small, text_halign=text.align_left)
+    table.cell(statusTable, 1, 4, pivotText + " / " + signalText, text_color=color.aqua, text_size=size.small, text_halign=text.align_right)
 
 alertcondition(dragonBreakout, title="Dragon Pattern Breakout", message="Dragon bullish reversal confirmed on {{ticker}} {{interval}}. Close: {{close}}, Volume: {{volume}}")
-alertcondition(setupInvalidated, title="Dragon Pattern Invalidated", message="Dragon setup invalidated on {{ticker}} {{interval}}. Close: {{close}}")
+alertcondition(setupBroken, title="Dragon Pattern Invalidated", message="Dragon setup invalidated on {{ticker}} {{interval}}. Close: {{close}}")

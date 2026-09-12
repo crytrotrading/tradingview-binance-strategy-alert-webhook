@@ -61,10 +61,35 @@
     .retest { color: var(--retest); border-color: #f7c8437d; background: #f7c84317; }
     .empty { color: #536176; }
     .error { color: #ff9485; }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .search {
+      width: min(320px, 100%);
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+      background: var(--panel);
+      color: #eef3fa;
+    }
+    .search:focus { border-color: #4f709d; }
+    .toggle { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: #bdc9d8; }
+    .toggle input { accent-color: var(--buy); }
+    #market-count { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .legend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); margin-top: 15px; font-size: 12px; }
     .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
     #banner { display: none; padding: 12px; margin-bottom: 14px; border: 1px solid #ff6b5760; border-radius: 8px; color: #ffaaa0; }
-    @media (max-width: 640px) { header { align-items: start; flex-direction: column; } main { padding-top: 22px; } }
+    @media (max-width: 640px) {
+      header { align-items: start; flex-direction: column; }
+      main { padding-top: 22px; }
+      .controls { align-items: stretch; flex-wrap: wrap; }
+      .search { width: 100%; }
+      #market-count { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -77,6 +102,11 @@
     <div id="updated">กำลังโหลดข้อมูล…</div>
   </header>
   <div id="banner"></div>
+  <div class="controls">
+    <input id="market-search" class="search" type="search" placeholder="ค้นหา เช่น BTC, ETH, XAU…" autocomplete="off">
+    <label class="toggle"><input id="active-only" type="checkbox" checked> เฉพาะคู่ที่มีสัญญาณ</label>
+    <span id="market-count">กำลังโหลด…</span>
+  </div>
   <div class="table-wrap">
     <table>
       <thead>
@@ -116,11 +146,16 @@
     ].join("\n");
   }
 
-  function marketRow(row, timeframes) {
+  function marketRow(row, timeframes, rank) {
     let element = document.querySelector(`tr[data-symbol="${row.symbol}"]`);
-    if (element) return element;
+    if (element) {
+      element.dataset.rank = rank;
+      return element;
+    }
     element = document.createElement("tr");
     element.dataset.symbol = row.symbol;
+    element.dataset.search = `${row.display} ${row.symbol}`.toLowerCase();
+    element.dataset.rank = rank;
 
     const market = document.createElement("td");
     const name = document.createElement("span");
@@ -148,6 +183,27 @@
     return element;
   }
 
+  function filterAndSort() {
+    const body = document.querySelector("#markets");
+    const query = document.querySelector("#market-search").value.trim().toLowerCase();
+    const activeOnly = document.querySelector("#active-only").checked;
+    const rows = [...body.querySelectorAll("tr[data-symbol]")];
+    let visible = 0;
+    for (const row of rows) {
+      const activeCount = row.querySelectorAll(".buy, .sell, .retest").length;
+      row.dataset.activeCount = activeCount;
+      const matches = !query || row.dataset.search.includes(query);
+      const show = matches && (!activeOnly || activeCount > 0);
+      row.hidden = !show;
+      if (show) visible += 1;
+    }
+    rows.sort((a, b) =>
+      Number(b.dataset.activeCount) - Number(a.dataset.activeCount) ||
+      Number(a.dataset.rank) - Number(b.dataset.rank)
+    ).forEach(row => body.appendChild(row));
+    document.querySelector("#market-count").textContent = `แสดง ${visible} / ${rows.length} คู่`;
+  }
+
   async function update() {
     if (loading) return;
     loading = true;
@@ -161,8 +217,8 @@
       document.querySelectorAll("tr[data-symbol]").forEach(element => {
         if (!activeSymbols.has(element.dataset.symbol)) element.remove();
       });
-      for (const row of data.rows) {
-        const element = marketRow(row, data.timeframes);
+      for (const [rank, row] of data.rows.entries()) {
+        const element = marketRow(row, data.timeframes, rank);
         element.querySelector(".price").textContent = number(row.price);
         for (const [timeframe, cell] of Object.entries(row.timeframes)) {
           const badge = element.querySelector(`[data-timeframe="${timeframe}"]`);
@@ -176,6 +232,7 @@
           badge.title = title(cell);
         }
       }
+      filterAndSort();
       document.querySelector("#updated").textContent =
         "อัปเดต " + new Date(data.updated_at).toLocaleTimeString("th-TH");
       banner.style.display = "none";
@@ -188,6 +245,8 @@
     }
   }
 
+  document.querySelector("#market-search").addEventListener("input", filterAndSort);
+  document.querySelector("#active-only").addEventListener("change", filterAndSort);
   update();
   setInterval(update, refreshMs);
 </script>

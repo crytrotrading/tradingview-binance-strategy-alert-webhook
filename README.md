@@ -37,7 +37,7 @@ SYMBOLS="BTC:BTCUSDT,ETH:ETHUSDT,XAU:XAUTUSDT" python app.py
 | `DASHBOARD_REFRESH_SECONDS` | 10 | ความถี่รีเฟรชหน้า |
 | `SIGNAL_CACHE_SECONDS` | 30 | อายุ cache การคำนวณ |
 | `KLINE_LIMIT` | 1000 | จำนวนแท่งย้อนหลังต่อคู่/TF |
-| `STATE_DB` | `/tmp/fibo-retest-state.db` | ไฟล์เก็บสถานะ Retest |
+| `STATE_DB` | โฟลเดอร์ชั่วคราวของระบบ | ไฟล์เก็บสถานะ Retest |
 | `BINANCE_API_URL` | `https://data-api.binance.vision` | Binance public market-data endpoint |
 
 แอปนี้เป็นหน้าติดตามสัญญาณเท่านั้นและไม่ส่งคำสั่งซื้อขาย ข้อมูล XAUUSD จาก

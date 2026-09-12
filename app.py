@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from threading import Lock
+import tempfile
 import time
 
 from flask import Flask, jsonify, render_template
@@ -18,7 +19,9 @@ BINANCE_API_URL = os.getenv(
 TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
 KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
 CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "30"))
-STATE_DB = os.getenv("STATE_DB", "/tmp/fibo-retest-state.db")
+STATE_DB = os.getenv(
+    "STATE_DB", os.path.join(tempfile.gettempdir(), "fibo-retest-state.db")
+)
 
 
 def _parse_symbols(raw):

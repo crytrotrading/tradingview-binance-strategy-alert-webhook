@@ -85,19 +85,8 @@
           {% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}
         </tr>
       </thead>
-      <tbody>
-        {% for symbol in symbols %}
-        <tr data-symbol="{{ symbol.exchange }}">
-          <td>
-            <span class="symbol">{{ symbol.display }}</span>
-            <span class="exchange">{{ symbol.exchange }}</span>
-            <span class="price">—</span>
-          </td>
-          {% for timeframe in timeframes %}
-          <td><span class="signal empty" data-timeframe="{{ timeframe }}">…</span></td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
+      <tbody id="markets">
+        <tr id="loading-row"><td colspan="{{ timeframes | length + 1 }}">กำลังคำนวณ Top 100 markets…</td></tr>
       </tbody>
     </table>
   </div>
@@ -109,6 +98,7 @@
 </main>
 <script>
   const refreshMs = {{ refresh_seconds }} * 1000;
+  let loading = false;
 
   function number(value) {
     if (value == null) return "—";
@@ -126,15 +116,53 @@
     ].join("\n");
   }
 
+  function marketRow(row, timeframes) {
+    let element = document.querySelector(`tr[data-symbol="${row.symbol}"]`);
+    if (element) return element;
+    element = document.createElement("tr");
+    element.dataset.symbol = row.symbol;
+
+    const market = document.createElement("td");
+    const name = document.createElement("span");
+    name.className = "symbol";
+    name.textContent = row.display;
+    const exchange = document.createElement("span");
+    exchange.className = "exchange";
+    exchange.textContent = row.symbol;
+    const price = document.createElement("span");
+    price.className = "price";
+    price.textContent = "—";
+    market.append(name, exchange, price);
+    element.appendChild(market);
+
+    for (const timeframe of timeframes) {
+      const cell = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "signal empty";
+      badge.dataset.timeframe = timeframe;
+      badge.textContent = "…";
+      cell.appendChild(badge);
+      element.appendChild(cell);
+    }
+    document.querySelector("#markets").appendChild(element);
+    return element;
+  }
+
   async function update() {
+    if (loading) return;
+    loading = true;
     const banner = document.querySelector("#banner");
     try {
       const response = await fetch("/api/dashboard", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "โหลดข้อมูลไม่สำเร็จ");
+      document.querySelector("#loading-row")?.remove();
+      const activeSymbols = new Set(data.rows.map(row => row.symbol));
+      document.querySelectorAll("tr[data-symbol]").forEach(element => {
+        if (!activeSymbols.has(element.dataset.symbol)) element.remove();
+      });
       for (const row of data.rows) {
-        const element = document.querySelector(`tr[data-symbol="${row.symbol}"]`);
-        if (!element) continue;
+        const element = marketRow(row, data.timeframes);
         element.querySelector(".price").textContent = number(row.price);
         for (const [timeframe, cell] of Object.entries(row.timeframes)) {
           const badge = element.querySelector(`[data-timeframe="${timeframe}"]`);
@@ -155,6 +183,8 @@
       banner.textContent = error.message;
       banner.style.display = "block";
       document.querySelector("#updated").textContent = "เชื่อมต่อข้อมูลไม่ได้";
+    } finally {
+      loading = false;
     }
   }
 

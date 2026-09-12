@@ -19,23 +19,26 @@ python app.py
 
 เปิด `http://localhost:5000`
 
-ค่าเริ่มต้นแสดง BTC, ETH, SOL และ XAU (ใช้ตลาด `XAUTUSDT` ของ Binance)
-บน Timeframe `1m, 5m, 15m, 1h, 4h, 1d`
+ค่าเริ่มต้นแสดง Top 100 คู่ USDT เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง พร้อม XAU
+(ใช้ตลาด `XAUTUSDT` ของ Binance) บน Timeframe `1m, 5m, 15m, 1h, 4h, 1d`
 
 ## ตั้งค่า
 
-กำหนดคู่ด้วย environment variable รูปแบบ `ชื่อแสดงผล:ชื่อบน Binance`:
+กำหนดจำนวนอันดับและคู่ที่ต้องแสดงเพิ่มได้ เช่น:
 
 ```bash
-SYMBOLS="BTC:BTCUSDT,ETH:ETHUSDT,XAU:XAUTUSDT" python app.py
+TOP_MARKETS=50 PINNED_SYMBOLS="XAU:XAUTUSDT" python app.py
 ```
 
 ตัวเลือกอื่น:
 
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |---|---:|---|
-| `DASHBOARD_REFRESH_SECONDS` | 10 | ความถี่รีเฟรชหน้า |
-| `SIGNAL_CACHE_SECONDS` | 30 | อายุ cache การคำนวณ |
+| `TOP_MARKETS` | 100 | จำนวนคู่ USDT อันดับสูงสุด (สูงสุด 100) |
+| `PINNED_SYMBOLS` | `XAU:XAUTUSDT` | คู่ที่แสดงเพิ่มนอกเหนือจากอันดับ |
+| `DASHBOARD_REFRESH_SECONDS` | 30 | ความถี่รีเฟรชหน้า |
+| `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |
+| `MARKET_CACHE_SECONDS` | 300 | อายุ cache การจัดอันดับ 24 ชั่วโมง |
 | `KLINE_LIMIT` | 1000 | จำนวนแท่งย้อนหลังต่อคู่/TF |
 | `STATE_DB` | โฟลเดอร์ชั่วคราวของระบบ | ไฟล์เก็บสถานะ Retest |
 | `BINANCE_API_URL` | `https://data-api.binance.vision` | Binance public market-data endpoint |

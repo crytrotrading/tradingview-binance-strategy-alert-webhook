@@ -18,7 +18,9 @@ BINANCE_API_URL = os.getenv(
 ).rstrip("/")
 TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
 KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
-CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "30"))
+CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "60"))
+MARKET_CACHE_SECONDS = int(os.getenv("MARKET_CACHE_SECONDS", "300"))
+TOP_MARKETS = min(100, max(1, int(os.getenv("TOP_MARKETS", "100"))))
 STATE_DB = os.getenv(
     "STATE_DB", os.path.join(tempfile.gettempdir(), "fibo-retest-state.db")
 )
@@ -36,15 +38,19 @@ def _parse_symbols(raw):
     return symbols
 
 
-SYMBOLS = _parse_symbols(
-    os.getenv("SYMBOLS", "BTC:BTCUSDT,ETH:ETHUSDT,SOL:SOLUSDT,XAU:XAUTUSDT")
-)
+PINNED_SYMBOLS = _parse_symbols(os.getenv("PINNED_SYMBOLS", "XAU:XAUTUSDT"))
+EXCLUDED_BASES = {
+    "USDC", "FDUSD", "TUSD", "USDP", "DAI", "EUR", "TRY", "BRL", "GBP",
+    "AUD", "BIDR", "IDRT", "UAH", "NGN", "RUB", "ZAR",
+}
+LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 
 http = requests.Session()
 http.headers.update({"User-Agent": "FiboRetestDashboard/1.0"})
 store = RetestStore(STATE_DB)
 cache_lock = Lock()
 analysis_cache = {}
+market_cache = None
 
 
 def _get_json(path, params):
@@ -53,9 +59,50 @@ def _get_json(path, params):
     return response.json()
 
 
-def _current_prices():
+def _rank_markets(payload, limit):
+    candidates = []
+    for item in payload:
+        symbol = item.get("symbol", "")
+        if not symbol.endswith("USDT"):
+            continue
+        base = symbol[:-4]
+        if (
+            base in EXCLUDED_BASES
+            or base.endswith(LEVERAGED_SUFFIXES)
+            or not base
+        ):
+            continue
+        try:
+            volume = float(item.get("quoteVolume", 0))
+        except (TypeError, ValueError):
+            continue
+        candidates.append((volume, base, symbol))
+    candidates.sort(reverse=True)
+    return [
+        {"display": base, "exchange": symbol}
+        for _, base, symbol in candidates[:limit]
+    ]
+
+
+def _market_symbols():
+    global market_cache
+    now = time.monotonic()
+    with cache_lock:
+        if market_cache and now - market_cache[0] < MARKET_CACHE_SECONDS:
+            return market_cache[1]
+    ranked = _rank_markets(_get_json("/api/v3/ticker/24hr", {}), TOP_MARKETS)
+    present = {item["exchange"] for item in ranked}
+    symbols = ranked + [
+        item for item in PINNED_SYMBOLS if item["exchange"] not in present
+    ]
+    with cache_lock:
+        market_cache = (now, symbols)
+    return symbols
+
+
+def _current_prices(symbols):
     payload = _get_json("/api/v3/ticker/price", {})
-    wanted = {symbol["exchange"] for symbol in SYMBOLS}
+    wanted = {symbol["exchange"] for symbol in symbols}
     return {
         item["symbol"]: float(item["price"])
         for item in payload
@@ -110,16 +157,16 @@ def _cell(symbol, timeframe, price):
 def dashboard():
     return render_template(
         "index.html",
-        symbols=SYMBOLS,
         timeframes=TIMEFRAMES,
-        refresh_seconds=max(5, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "10"))),
+        refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
     )
 
 
 @app.get("/api/dashboard")
 def dashboard_data():
     try:
-        prices = _current_prices()
+        symbols = _market_symbols()
+        prices = _current_prices(symbols)
     except Exception as exc:
         return jsonify({"error": f"โหลดราคาจาก Binance ไม่สำเร็จ: {exc}"}), 502
 
@@ -130,11 +177,11 @@ def dashboard_data():
             "price": prices.get(symbol["exchange"]),
             "timeframes": {},
         }
-        for symbol in SYMBOLS
+        for symbol in symbols
     }
     jobs = {}
-    with ThreadPoolExecutor(max_workers=min(12, len(SYMBOLS) * len(TIMEFRAMES))) as pool:
-        for symbol in SYMBOLS:
+    with ThreadPoolExecutor(max_workers=min(20, len(symbols) * len(TIMEFRAMES))) as pool:
+        for symbol in symbols:
             price = prices.get(symbol["exchange"])
             if price is None:
                 for timeframe in TIMEFRAMES:

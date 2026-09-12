@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 
+from app import _rank_markets
 from signal_engine import RetestStore, Setup, tradingview_rsi
 
 
@@ -63,6 +64,24 @@ class RsiTests(unittest.TestCase):
         self.assertEqual(len(result), 30)
         self.assertIsNone(result[13])
         self.assertEqual(result[14], 100.0)
+
+
+class MarketRankingTests(unittest.TestCase):
+    def test_ranks_usdt_markets_and_excludes_stables_and_leverage(self):
+        payload = [
+            {"symbol": "ETHUSDT", "quoteVolume": "900"},
+            {"symbol": "BTCUSDT", "quoteVolume": "1000"},
+            {"symbol": "USDCUSDT", "quoteVolume": "2000"},
+            {"symbol": "BTCUPUSDT", "quoteVolume": "3000"},
+            {"symbol": "ETHEUR", "quoteVolume": "5000"},
+        ]
+        self.assertEqual(
+            _rank_markets(payload, 2),
+            [
+                {"display": "BTC", "exchange": "BTCUSDT"},
+                {"display": "ETH", "exchange": "ETHUSDT"},
+            ],
+        )
 
 
 if __name__ == "__main__":

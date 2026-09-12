@@ -1,0 +1,63 @@
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+from mt5_provider import Mt5MarketData
+
+
+class FakeMt5:
+    TIMEFRAME_M1 = 1
+
+    def terminal_info(self):
+        return SimpleNamespace(connected=True)
+
+    def symbols_get(self):
+        return [
+            SimpleNamespace(name="EURUSDc", visible=True),
+            SimpleNamespace(name="XAUUSDc", visible=True),
+        ]
+
+    def symbol_select(self, symbol, enabled):
+        return enabled
+
+    def symbol_info_tick(self, symbol):
+        return SimpleNamespace(bid=1.2345, last=0.0, ask=1.2347)
+
+    def copy_rates_from_pos(self, symbol, timeframe, start, count):
+        return [
+            {"time": 1, "high": 1.2, "low": 1.0, "close": 1.1, "tick_volume": 10},
+            {"time": 2, "high": 1.3, "low": 1.1, "close": 1.2, "tick_volume": 12},
+            {"time": 3, "high": 1.4, "low": 1.2, "close": 1.3, "tick_volume": 8},
+        ]
+
+    def last_error(self):
+        return (0, "ok")
+
+
+class Mt5MarketDataTests(unittest.TestCase):
+    def setUp(self):
+        self.patcher = patch("mt5_provider.mt5", FakeMt5())
+        self.patcher.start()
+        self.provider = Mt5MarketData()
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_resolves_windsor_c_suffix_automatically(self):
+        self.assertEqual(
+            self.provider.resolve_symbols(["EURUSD", "XAUUSD", "MISSING"]),
+            [
+                {"display": "EURUSD", "exchange": "EURUSDc"},
+                {"display": "XAUUSD", "exchange": "XAUUSDc"},
+            ],
+        )
+
+    def test_reads_bid_and_excludes_forming_candle(self):
+        self.assertEqual(self.provider.current_price("EURUSDc"), 1.2345)
+        candles = self.provider.closed_candles("EURUSDc", "1m", 2)
+        self.assertEqual(len(candles), 2)
+        self.assertEqual(candles[-1].open_time, 2000)
+
+
+if __name__ == "__main__":
+    unittest.main()

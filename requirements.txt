@@ -1,3 +1,4 @@
 flask
 gunicorn
 requests
+MetaTrader5; platform_system == "Windows"

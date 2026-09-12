@@ -9,6 +9,7 @@ import time
 from flask import Flask, jsonify, render_template
 import requests
 
+from mt5_provider import Mt5MarketData
 from signal_engine import Candle, RetestStore, calculate_setup
 
 app = Flask(__name__)
@@ -21,6 +22,16 @@ KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
 CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "60"))
 MARKET_CACHE_SECONDS = int(os.getenv("MARKET_CACHE_SECONDS", "300"))
 TOP_MARKETS = min(100, max(1, int(os.getenv("TOP_MARKETS", "100"))))
+FOREX_SYMBOLS = [
+    item.strip().upper()
+    for item in os.getenv(
+        "FOREX_SYMBOLS",
+        "XAUUSD,EURUSD,GBPUSD,USDJPY,USDCHF,AUDUSD,NZDUSD,USDCAD,"
+        "EURJPY,GBPJPY,EURGBP,EURAUD,EURCAD,EURCHF,GBPCHF,GBPAUD,"
+        "GBPCAD,AUDJPY,NZDJPY,CADJPY,CHFJPY,AUDNZD,AUDCAD,NZDCAD",
+    ).split(",")
+    if item.strip()
+]
 STATE_DB = os.getenv(
     "STATE_DB", os.path.join(tempfile.gettempdir(), "fibo-retest-state.db")
 )
@@ -38,7 +49,7 @@ def _parse_symbols(raw):
     return symbols
 
 
-PINNED_SYMBOLS = _parse_symbols(os.getenv("PINNED_SYMBOLS", "XAU:XAUTUSDT"))
+PINNED_SYMBOLS = _parse_symbols(os.getenv("PINNED_SYMBOLS", ""))
 EXCLUDED_BASES = {
     "USDC", "FDUSD", "TUSD", "USDP", "DAI", "USDE", "USDS", "USD1",
     "BFUSD", "AEUR", "EUR", "TRY", "BRL", "GBP", "AUD", "BIDR", "IDRT",
@@ -49,6 +60,7 @@ LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 http = requests.Session()
 http.headers.update({"User-Agent": "FiboRetestDashboard/1.0"})
 store = RetestStore(STATE_DB)
+mt5_data = Mt5MarketData()
 cache_lock = Lock()
 analysis_cache = {}
 market_cache = None
@@ -137,17 +149,23 @@ def _closed_candles(symbol, timeframe):
     ]
 
 
-def _setup_for(symbol, timeframe):
-    key = (symbol, timeframe)
+def _cached_setup(key, candle_loader):
     now = time.monotonic()
     with cache_lock:
         cached = analysis_cache.get(key)
         if cached and now - cached[0] < CACHE_SECONDS:
             return cached[1]
-    setup = calculate_setup(_closed_candles(symbol, timeframe))
+    setup = calculate_setup(candle_loader())
     with cache_lock:
         analysis_cache[key] = (now, setup)
     return setup
+
+
+def _setup_for(symbol, timeframe):
+    return _cached_setup(
+        ("binance", symbol, timeframe),
+        lambda: _closed_candles(symbol, timeframe),
+    )
 
 
 def _cell(symbol, timeframe, price):
@@ -161,6 +179,20 @@ def _cell(symbol, timeframe, price):
         return {"status": "!", "price": price, "error": str(exc)}
 
 
+def _mt5_cell(symbol, timeframe, price):
+    try:
+        setup = _cached_setup(
+            ("mt5", symbol, timeframe),
+            lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
+        )
+        if setup is None:
+            return {"status": "—", "price": price, "error": None, "no_signal": True}
+        return store.evaluate(f"MT5:{symbol}", timeframe, setup, price)
+    except Exception as exc:
+        app.logger.warning("MT5 failed %s %s: %s", symbol, timeframe, exc)
+        return {"status": "!", "price": price, "error": str(exc)}
+
+
 @app.get("/")
 def dashboard():
     return render_template(
@@ -170,14 +202,7 @@ def dashboard():
     )
 
 
-@app.get("/api/dashboard")
-def dashboard_data():
-    try:
-        symbols = _market_symbols()
-        prices = _current_prices(symbols)
-    except Exception as exc:
-        return jsonify({"error": f"โหลดราคาจาก Binance ไม่สำเร็จ: {exc}"}), 502
-
+def _populate_rows(symbols, prices, cell_function, max_workers):
     rows = {
         symbol["exchange"]: {
             "symbol": symbol["exchange"],
@@ -188,7 +213,9 @@ def dashboard_data():
         for symbol in symbols
     }
     jobs = {}
-    with ThreadPoolExecutor(max_workers=min(20, len(symbols) * len(TIMEFRAMES))) as pool:
+    with ThreadPoolExecutor(
+        max_workers=min(max_workers, max(1, len(symbols) * len(TIMEFRAMES)))
+    ) as pool:
         for symbol in symbols:
             price = prices.get(symbol["exchange"])
             if price is None:
@@ -199,17 +226,49 @@ def dashboard_data():
                     }
                 continue
             for timeframe in TIMEFRAMES:
-                future = pool.submit(_cell, symbol["exchange"], timeframe, price)
+                future = pool.submit(
+                    cell_function, symbol["exchange"], timeframe, price
+                )
                 jobs[future] = (symbol["exchange"], timeframe)
         for future in as_completed(jobs):
             symbol, timeframe = jobs[future]
             rows[symbol]["timeframes"][timeframe] = future.result()
+    return list(rows.values())
+
+
+def _crypto_dashboard():
+    symbols = _market_symbols()
+    return _populate_rows(symbols, _current_prices(symbols), _cell, 20)
+
+
+def _forex_dashboard():
+    symbols = mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
+    return _populate_rows(symbols, prices, _mt5_cell, 8)
+
+
+@app.get("/api/dashboard")
+def dashboard_data():
+    try:
+        crypto_rows = _crypto_dashboard()
+    except Exception as exc:
+        return jsonify({"error": f"โหลดราคาจาก Binance ไม่สำเร็จ: {exc}"}), 502
+
+    forex_error = None
+    try:
+        forex_rows = _forex_dashboard()
+    except Exception as exc:
+        forex_rows = []
+        forex_error = str(exc)
 
     return jsonify(
         {
             "updated_at": int(time.time() * 1000),
             "timeframes": TIMEFRAMES,
-            "rows": list(rows.values()),
+            "rows": crypto_rows,
+            "crypto_rows": crypto_rows,
+            "forex_rows": forex_rows,
+            "forex_error": forex_error,
         }
     )
 

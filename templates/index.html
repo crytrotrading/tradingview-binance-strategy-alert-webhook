@@ -24,7 +24,7 @@
       color: #eef3fa;
       font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
     }
-    main { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0; }
+    main { width: min(1880px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0; }
     header { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
     h1 { font-size: clamp(23px, 3vw, 34px); margin: 0; letter-spacing: -.03em; }
     .subtitle, #updated { color: var(--muted); }
@@ -36,8 +36,12 @@
       background: rgba(16, 23, 34, .93);
       box-shadow: 0 24px 70px #0007;
     }
-    table { width: 100%; border-collapse: collapse; min-width: 810px; }
-    th, td { padding: 15px 13px; border-bottom: 1px solid var(--line); text-align: center; }
+    .market-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .panel-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 0 3px 8px; }
+    .panel-heading h2 { margin: 0; font-size: 16px; }
+    .panel-heading span { color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid var(--line); text-align: center; }
     th { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
     th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #101722; z-index: 1; }
     tbody tr:last-child td { border-bottom: 0; }
@@ -49,7 +53,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 76px;
+      min-width: 64px;
       min-height: 30px;
       border-radius: 7px;
       font-size: 12px;
@@ -79,7 +83,6 @@
     .search:focus { border-color: #4f709d; }
     .toggle { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: #bdc9d8; }
     .toggle input { accent-color: var(--buy); }
-    #market-count { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .legend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); margin-top: 15px; font-size: 12px; }
     .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
     #banner { display: none; padding: 12px; margin-bottom: 14px; border: 1px solid #ff6b5760; border-radius: 8px; color: #ffaaa0; }
@@ -88,8 +91,8 @@
       main { padding-top: 22px; }
       .controls { align-items: stretch; flex-wrap: wrap; }
       .search { width: 100%; }
-      #market-count { margin-left: 0; }
     }
+    @media (max-width: 1100px) { .market-columns { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -105,20 +108,32 @@
   <div class="controls">
     <input id="market-search" class="search" type="search" placeholder="ค้นหา เช่น BTC, ETH, XAU…" autocomplete="off">
     <label class="toggle"><input id="active-only" type="checkbox" checked> เฉพาะคู่ที่มีสัญญาณ</label>
-    <span id="market-count">กำลังโหลด…</span>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Market</th>
-          {% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}
-        </tr>
-      </thead>
-      <tbody id="markets">
-        <tr id="loading-row"><td colspan="{{ timeframes | length + 1 }}">กำลังคำนวณ Top 100 markets…</td></tr>
-      </tbody>
-    </table>
+  <div class="market-columns">
+    {% for provider, title, loading_text in [
+      ("crypto", "Crypto · Binance", "กำลังคำนวณ Top 100 Crypto…"),
+      ("forex", "Forex · Windsor MT5", "กำลังเชื่อมต่อ Windsor MT5…")
+    ] %}
+    <section class="market-panel">
+      <div class="panel-heading">
+        <h2>{{ title }}</h2>
+        <span id="{{ provider }}-count">กำลังโหลด…</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Market</th>
+              {% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody id="{{ provider }}-markets">
+            <tr id="{{ provider }}-loading"><td colspan="{{ timeframes | length + 1 }}">{{ loading_text }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
   </div>
   <div class="legend">
     <span><i class="dot" style="background:var(--buy)"></i>ราคาอยู่ในโซน BUY/SELL</span>
@@ -146,8 +161,10 @@
     ].join("\n");
   }
 
-  function marketRow(row, timeframes, rank) {
-    let element = document.querySelector(`tr[data-symbol="${row.symbol}"]`);
+  function marketRow(provider, row, timeframes, rank) {
+    const body = document.querySelector(`#${provider}-markets`);
+    let element = [...body.querySelectorAll("tr[data-symbol]")]
+      .find(item => item.dataset.symbol === row.symbol);
     if (element) {
       element.dataset.rank = rank;
       return element;
@@ -179,12 +196,12 @@
       cell.appendChild(badge);
       element.appendChild(cell);
     }
-    document.querySelector("#markets").appendChild(element);
+    body.appendChild(element);
     return element;
   }
 
-  function filterAndSort() {
-    const body = document.querySelector("#markets");
+  function filterAndSortProvider(provider) {
+    const body = document.querySelector(`#${provider}-markets`);
     const query = document.querySelector("#market-search").value.trim().toLowerCase();
     const activeOnly = document.querySelector("#active-only").checked;
     const rows = [...body.querySelectorAll("tr[data-symbol]")];
@@ -201,7 +218,45 @@
       Number(b.dataset.activeCount) - Number(a.dataset.activeCount) ||
       Number(a.dataset.rank) - Number(b.dataset.rank)
     ).forEach(row => body.appendChild(row));
-    document.querySelector("#market-count").textContent = `แสดง ${visible} / ${rows.length} คู่`;
+    document.querySelector(`#${provider}-count`).textContent = `แสดง ${visible} / ${rows.length} คู่`;
+  }
+
+  function filterAndSort() {
+    filterAndSortProvider("crypto");
+    filterAndSortProvider("forex");
+  }
+
+  function updateProvider(provider, rows, timeframes, error = null) {
+    const body = document.querySelector(`#${provider}-markets`);
+    const loadingRow = document.querySelector(`#${provider}-loading`);
+    if (error && rows.length === 0) {
+      if (loadingRow) {
+        loadingRow.querySelector("td").textContent = error;
+        loadingRow.querySelector("td").className = "error";
+      }
+      document.querySelector(`#${provider}-count`).textContent = "ยังไม่เชื่อมต่อ";
+      return;
+    }
+    loadingRow?.remove();
+    const activeSymbols = new Set(rows.map(row => row.symbol));
+    body.querySelectorAll("tr[data-symbol]").forEach(element => {
+      if (!activeSymbols.has(element.dataset.symbol)) element.remove();
+    });
+    for (const [rank, row] of rows.entries()) {
+      const element = marketRow(provider, row, timeframes, rank);
+      element.querySelector(".price").textContent = number(row.price);
+      for (const [timeframe, cell] of Object.entries(row.timeframes)) {
+        const badge = element.querySelector(`[data-timeframe="${timeframe}"]`);
+        badge.textContent = cell.status;
+        badge.className = "signal " + (
+          cell.error ? "error" :
+          cell.is_retest ? "retest" :
+          cell.status === "BUY" ? "buy" :
+          cell.status === "SELL" ? "sell" : "empty"
+        );
+        badge.title = title(cell);
+      }
+    }
   }
 
   async function update() {
@@ -212,26 +267,8 @@
       const response = await fetch("/api/dashboard", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "โหลดข้อมูลไม่สำเร็จ");
-      document.querySelector("#loading-row")?.remove();
-      const activeSymbols = new Set(data.rows.map(row => row.symbol));
-      document.querySelectorAll("tr[data-symbol]").forEach(element => {
-        if (!activeSymbols.has(element.dataset.symbol)) element.remove();
-      });
-      for (const [rank, row] of data.rows.entries()) {
-        const element = marketRow(row, data.timeframes, rank);
-        element.querySelector(".price").textContent = number(row.price);
-        for (const [timeframe, cell] of Object.entries(row.timeframes)) {
-          const badge = element.querySelector(`[data-timeframe="${timeframe}"]`);
-          badge.textContent = cell.status;
-          badge.className = "signal " + (
-            cell.error ? "error" :
-            cell.is_retest ? "retest" :
-            cell.status === "BUY" ? "buy" :
-            cell.status === "SELL" ? "sell" : "empty"
-          );
-          badge.title = title(cell);
-        }
-      }
+      updateProvider("crypto", data.crypto_rows || data.rows, data.timeframes);
+      updateProvider("forex", data.forex_rows || [], data.timeframes, data.forex_error);
       filterAndSort();
       document.querySelector("#updated").textContent =
         "อัปเดต " + new Date(data.updated_at).toLocaleTimeString("th-TH");

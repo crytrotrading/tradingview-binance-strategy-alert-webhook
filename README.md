@@ -18,17 +18,19 @@ pip install -r requirements.txt
 python app.py
 ```
 
-เปิด `http://localhost:5000`
+บน Windows ให้เปิดและล็อกอิน Windsor MT5 ก่อน จากนั้นเปิด `http://localhost:5000`
 
-ค่าเริ่มต้นแสดง Top 100 คู่ USDT เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง พร้อม XAU
-(ใช้ตลาด `XAUTUSDT` ของ Binance) บน Timeframe `1m, 5m, 15m, 1h, 4h, 1d`
+หน้าซ้ายแสดง Top 100 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
+หน้าขวาแสดง Forex และ XAUUSD จาก Windsor MT5 ที่เปิดอยู่ โปรแกรมตรวจ suffix
+ของโบรกเกอร์ เช่น `EURUSDc` ให้อัตโนมัติ ทั้งสองฝั่งคำนวณ Timeframe
+`1m, 5m, 15m, 1h, 4h, 1d`
 
 ## ตั้งค่า
 
 กำหนดจำนวนอันดับและคู่ที่ต้องแสดงเพิ่มได้ เช่น:
 
 ```bash
-TOP_MARKETS=50 PINNED_SYMBOLS="XAU:XAUTUSDT" python app.py
+TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 ```
 
 ตัวเลือกอื่น:
@@ -36,7 +38,9 @@ TOP_MARKETS=50 PINNED_SYMBOLS="XAU:XAUTUSDT" python app.py
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |---|---:|---|
 | `TOP_MARKETS` | 100 | จำนวนคู่ USDT อันดับสูงสุด (สูงสุด 100) |
-| `PINNED_SYMBOLS` | `XAU:XAUTUSDT` | คู่ที่แสดงเพิ่มนอกเหนือจากอันดับ |
+| `PINNED_SYMBOLS` | ว่าง | คู่ Binance ที่แสดงเพิ่มนอกเหนือจากอันดับ |
+| `FOREX_SYMBOLS` | 24 คู่หลัก | คู่ที่อ่านจาก Windsor MT5 |
+| `MT5_PATH` | ตรวจอัตโนมัติ | path ของ `terminal64.exe` กรณีมี MT5 หลายตัว |
 | `DASHBOARD_REFRESH_SECONDS` | 30 | ความถี่รีเฟรชหน้า |
 | `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |
 | `MARKET_CACHE_SECONDS` | 300 | อายุ cache การจัดอันดับ 24 ชั่วโมง |
@@ -44,5 +48,5 @@ TOP_MARKETS=50 PINNED_SYMBOLS="XAU:XAUTUSDT" python app.py
 | `STATE_DB` | โฟลเดอร์ชั่วคราวของระบบ | ไฟล์เก็บสถานะ Retest |
 | `BINANCE_API_URL` | `https://data-api.binance.vision` | Binance public market-data endpoint |
 
-แอปนี้เป็นหน้าติดตามสัญญาณเท่านั้นและไม่ส่งคำสั่งซื้อขาย ข้อมูล XAUUSD จาก
-โบรกเกอร์อื่นอาจต่างจาก XAUTUSDT ทั้งราคาและ volume
+แอปนี้เชื่อม MT5 แบบอ่านข้อมูลเท่านั้นและไม่ส่งคำสั่งซื้อขาย ต้องเปิด MT5 และ
+Command Prompt ที่รันเว็บค้างไว้ ข้อมูล volume ของ Forex เป็น tick volume จาก Windsor

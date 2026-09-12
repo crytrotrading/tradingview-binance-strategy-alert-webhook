@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from app import _rank_markets
+from app import _rank_markets, _with_pinned_markets
 from signal_engine import RetestStore, Setup, tradingview_rsi
 
 
@@ -81,6 +81,18 @@ class MarketRankingTests(unittest.TestCase):
                 {"display": "BTC", "exchange": "BTCUSDT"},
                 {"display": "ETH", "exchange": "ETHUSDT"},
             ],
+        )
+
+    def test_pinned_market_stays_first_and_does_not_reduce_top_count(self):
+        xau = {"display": "XAU", "exchange": "XAUTUSDT"}
+        ranked = [
+            {"display": "BTC", "exchange": "BTCUSDT"},
+            xau,
+            {"display": "ETH", "exchange": "ETHUSDT"},
+        ]
+        self.assertEqual(
+            _with_pinned_markets(ranked, [xau], 2),
+            [xau, ranked[0], ranked[2]],
         )
 
 

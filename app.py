@@ -40,8 +40,9 @@ def _parse_symbols(raw):
 
 PINNED_SYMBOLS = _parse_symbols(os.getenv("PINNED_SYMBOLS", "XAU:XAUTUSDT"))
 EXCLUDED_BASES = {
-    "USDC", "FDUSD", "TUSD", "USDP", "DAI", "EUR", "TRY", "BRL", "GBP",
-    "AUD", "BIDR", "IDRT", "UAH", "NGN", "RUB", "ZAR",
+    "USDC", "FDUSD", "TUSD", "USDP", "DAI", "USDE", "USDS", "USD1",
+    "BFUSD", "AEUR", "EUR", "TRY", "BRL", "GBP", "AUD", "BIDR", "IDRT",
+    "UAH", "NGN", "RUB", "ZAR",
 }
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 
@@ -84,17 +85,24 @@ def _rank_markets(payload, limit):
     ]
 
 
+def _with_pinned_markets(ranked, pinned, limit):
+    pinned_symbols = {item["exchange"] for item in pinned}
+    return pinned + [
+        item for item in ranked if item["exchange"] not in pinned_symbols
+    ][:limit]
+
+
 def _market_symbols():
     global market_cache
     now = time.monotonic()
     with cache_lock:
         if market_cache and now - market_cache[0] < MARKET_CACHE_SECONDS:
             return market_cache[1]
-    ranked = _rank_markets(_get_json("/api/v3/ticker/24hr", {}), TOP_MARKETS)
-    present = {item["exchange"] for item in ranked}
-    symbols = ranked + [
-        item for item in PINNED_SYMBOLS if item["exchange"] not in present
-    ]
+    ranked = _rank_markets(
+        _get_json("/api/v3/ticker/24hr", {}),
+        TOP_MARKETS + len(PINNED_SYMBOLS),
+    )
+    symbols = _with_pinned_markets(ranked, PINNED_SYMBOLS, TOP_MARKETS)
     with cache_lock:
         market_cache = (now, symbols)
     return symbols

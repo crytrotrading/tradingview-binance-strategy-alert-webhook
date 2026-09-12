@@ -143,7 +143,7 @@
 </main>
 <script>
   const refreshMs = {{ refresh_seconds }} * 1000;
-  let loading = false;
+  const loading = { crypto: false, forex: false };
 
   function number(value) {
     if (value == null) return "—";
@@ -259,27 +259,33 @@
     }
   }
 
-  async function update() {
-    if (loading) return;
-    loading = true;
+  async function updateProviderData(provider) {
+    if (loading[provider]) return;
+    loading[provider] = true;
     const banner = document.querySelector("#banner");
     try {
-      const response = await fetch("/api/dashboard", { cache: "no-store" });
+      const response = await fetch(`/api/${provider}`, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "โหลดข้อมูลไม่สำเร็จ");
-      updateProvider("crypto", data.crypto_rows || data.rows, data.timeframes);
-      updateProvider("forex", data.forex_rows || [], data.timeframes, data.forex_error);
+      updateProvider(provider, data.rows || [], data.timeframes, data.error);
       filterAndSort();
       document.querySelector("#updated").textContent =
         "อัปเดต " + new Date(data.updated_at).toLocaleTimeString("th-TH");
       banner.style.display = "none";
     } catch (error) {
-      banner.textContent = error.message;
-      banner.style.display = "block";
-      document.querySelector("#updated").textContent = "เชื่อมต่อข้อมูลไม่ได้";
+      updateProvider(provider, [], [], error.message);
+      if (provider === "crypto") {
+        banner.textContent = error.message;
+        banner.style.display = "block";
+      }
     } finally {
-      loading = false;
+      loading[provider] = false;
     }
+  }
+
+  function update() {
+    updateProviderData("crypto");
+    updateProviderData("forex");
   }
 
   document.querySelector("#market-search").addEventListener("input", filterAndSort);

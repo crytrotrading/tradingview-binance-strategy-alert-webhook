@@ -247,6 +247,43 @@ def _forex_dashboard():
     return _populate_rows(symbols, prices, _mt5_cell, 8)
 
 
+@app.get("/api/crypto")
+def crypto_data():
+    try:
+        rows = _crypto_dashboard()
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "timeframes": TIMEFRAMES,
+                "rows": rows,
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"โหลดราคาจาก Binance ไม่สำเร็จ: {exc}"}), 502
+
+
+@app.get("/api/forex")
+def forex_data():
+    try:
+        rows = _forex_dashboard()
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "timeframes": TIMEFRAMES,
+                "rows": rows,
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "timeframes": TIMEFRAMES,
+                "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
 @app.get("/api/dashboard")
 def dashboard_data():
     try:

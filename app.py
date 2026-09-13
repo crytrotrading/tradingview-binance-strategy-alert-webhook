@@ -203,6 +203,11 @@ def _mt5_cell(symbol, timeframe, price):
 
 
 def _smc_result(signal, price):
+    max_age_ms = max(
+        1, int(os.getenv("SMC_SIGNAL_MAX_AGE_HOURS", "24"))
+    ) * 3_600_000
+    if signal is not None and int(time.time() * 1000) - signal.timestamp > max_age_ms:
+        signal = None
     if signal is None:
         return {"status": "—", "price": price, "no_signal": True}
     return {

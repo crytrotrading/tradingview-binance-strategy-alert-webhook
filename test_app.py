@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import app
+from smc_engine import SmcSignal
 
 
 class ProviderApiTests(unittest.TestCase):
@@ -31,6 +32,11 @@ class ProviderApiTests(unittest.TestCase):
         response = self.client.get("/api/smc/crypto")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
+
+    @patch("app.time.time", return_value=100_000)
+    def test_stale_smc_market_signal_is_hidden(self, _time):
+        signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 1, 102, 98)
+        self.assertEqual(app._smc_result(signal, 100)["status"], "—")
 
 
 if __name__ == "__main__":

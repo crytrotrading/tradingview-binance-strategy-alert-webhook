@@ -36,6 +36,7 @@
       background: rgba(16, 23, 34, .93);
       box-shadow: 0 24px 70px #0007;
     }
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
     .market-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
     .panel-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 0 3px 8px; }
     .panel-heading h2 { margin: 0; font-size: 16px; }
@@ -67,6 +68,26 @@
     .retest { color: var(--retest); border-color: #f7c8437d; background: #f7c84317; }
     .empty { color: #536176; }
     .error { color: #ff9485; }
+    .events-panel {
+      position: sticky;
+      top: 14px;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(16, 23, 34, .95);
+    }
+    .event-card { display: block; padding: 12px 2px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+    .event-card:last-child { border-bottom: 0; }
+    .event-card:hover .event-title { color: #7fc8ff; }
+    .event-meta { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 10px; }
+    .event-tag { padding: 2px 5px; border-radius: 4px; background: #24334a; color: #b9cbe2; }
+    .event-important { background: #ff6b5724; color: #ff9d90; }
+    .event-title { margin: 6px 0 4px; font-size: 12px; font-weight: 700; line-height: 1.45; }
+    .event-symbols { color: var(--retest); font-size: 10px; }
+    .event-original { color: var(--muted); font-size: 9px; line-height: 1.35; }
+    #events-status { color: var(--muted); font-size: 11px; }
     .controls {
       display: flex;
       align-items: center;
@@ -94,6 +115,10 @@
       .controls { align-items: stretch; flex-wrap: wrap; }
       .search { width: 100%; }
     }
+    @media (max-width: 900px) {
+      .content-grid { grid-template-columns: 1fr; }
+      .events-panel { position: static; max-height: none; }
+    }
     @media (max-width: 1100px) { .market-columns { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -111,6 +136,7 @@
     <input id="market-search" class="search" type="search" placeholder="ค้นหา เช่น BTC, ETH, XAU…" autocomplete="off">
     <label class="toggle"><input id="active-only" type="checkbox" checked> เฉพาะคู่ที่มีสัญญาณ</label>
   </div>
+  <div class="content-grid">
   <div class="market-columns">
     {% for provider, title, loading_text in [
       ("crypto", "Crypto · Binance", "กำลังคำนวณ Top 100 Crypto…"),
@@ -138,6 +164,15 @@
     </section>
     {% endfor %}
   </div>
+  <aside class="events-panel">
+    <div class="panel-heading">
+      <h2>ข่าวและ Events สำคัญ</h2>
+      <span id="events-count">altFINS</span>
+    </div>
+    <div id="events-status">กำลังโหลดและแปลเป็นไทย…</div>
+    <div id="events-list"></div>
+  </aside>
+  </div>
   <div class="legend">
     <span><i class="dot" style="background:var(--buy)"></i>ราคาอยู่ในโซน BUY/SELL</span>
     <span><i class="dot" style="background:var(--retest)"></i>กลับเข้าโซนเดิม = RETEST</span>
@@ -146,7 +181,7 @@
 </main>
 <script>
   const refreshMs = {{ refresh_seconds }} * 1000;
-  const loading = { crypto: false, forex: false };
+  const loading = { crypto: false, forex: false, events: false };
 
   function number(value) {
     if (value == null) return "—";
@@ -300,9 +335,77 @@
     }
   }
 
+  function renderEvents(items, error = null) {
+    const list = document.querySelector("#events-list");
+    const status = document.querySelector("#events-status");
+    list.replaceChildren();
+    if (error) {
+      status.textContent = error;
+      status.className = "error";
+      document.querySelector("#events-count").textContent = "ยังไม่เชื่อมต่อ";
+      return;
+    }
+    status.className = "";
+    status.textContent = items.length ? "เวลาไทย · เรียงรายการสำคัญก่อน" : "ยังไม่มี Events ในช่วงนี้";
+    document.querySelector("#events-count").textContent = `${items.length} รายการ`;
+    for (const item of items) {
+      const card = document.createElement(item.url ? "a" : "div");
+      card.className = "event-card";
+      if (item.url) {
+        card.href = item.url;
+        card.target = "_blank";
+        card.rel = "noopener noreferrer";
+      }
+      const meta = document.createElement("div");
+      meta.className = "event-meta";
+      const tag = document.createElement("span");
+      tag.className = "event-tag" + (item.important ? " event-important" : "");
+      tag.textContent = item.important ? `สำคัญ · ${item.kind}` : item.kind;
+      const date = document.createElement("span");
+      date.textContent = item.timestamp
+        ? new Intl.DateTimeFormat("th-TH", {
+            dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok"
+          }).format(new Date(item.timestamp))
+        : "";
+      meta.append(tag, date);
+      const title = document.createElement("div");
+      title.className = "event-title";
+      title.textContent = item.title;
+      card.append(meta, title);
+      if (item.symbols) {
+        const symbols = document.createElement("div");
+        symbols.className = "event-symbols";
+        symbols.textContent = item.symbols;
+        card.appendChild(symbols);
+      }
+      if (item.original_title && item.original_title !== item.title) {
+        const original = document.createElement("div");
+        original.className = "event-original";
+        original.textContent = item.original_title;
+        card.appendChild(original);
+      }
+      list.appendChild(card);
+    }
+  }
+
+  async function updateEvents() {
+    if (loading.events) return;
+    loading.events = true;
+    try {
+      const response = await fetch("/api/events", { cache: "no-store" });
+      const data = await response.json();
+      renderEvents(data.items || [], data.error);
+    } catch (error) {
+      renderEvents([], error.message);
+    } finally {
+      loading.events = false;
+    }
+  }
+
   function update() {
     updateProviderData("crypto");
     updateProviderData("forex");
+    updateEvents();
   }
 
   document.querySelector("#market-search").addEventListener("input", filterAndSort);

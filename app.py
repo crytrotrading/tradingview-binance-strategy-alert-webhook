@@ -9,6 +9,7 @@ import time
 from flask import Flask, jsonify, render_template
 import requests
 
+from altfins_provider import AltFinsFeed
 from mt5_provider import Mt5MarketData
 from signal_engine import Candle, RetestStore, calculate_setup
 from trading_sessions import sessions_for_symbol
@@ -65,6 +66,7 @@ http = requests.Session()
 http.headers.update({"User-Agent": "FiboRetestDashboard/1.0"})
 store = RetestStore(STATE_DB)
 mt5_data = Mt5MarketData()
+altfins_feed = AltFinsFeed()
 cache_lock = Lock()
 analysis_cache = {}
 market_cache = None
@@ -290,6 +292,21 @@ def forex_data():
                 "updated_at": int(time.time() * 1000),
                 "timeframes": TIMEFRAMES,
                 "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
+@app.get("/api/events")
+def events_data():
+    try:
+        items = altfins_feed.get_feed()
+        return jsonify({"updated_at": int(time.time() * 1000), "items": items})
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "items": [],
                 "error": str(exc),
             }
         )

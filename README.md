@@ -20,6 +20,17 @@ python app.py
 
 บน Windows ให้เปิดและล็อกอิน Windsor MT5 ก่อน จากนั้นเปิด `http://localhost:5000`
 
+เปิดข่าวและ Events จาก altFINS โดยตั้ง API Key ใน Command Prompt ก่อนรัน:
+
+```bat
+set ALTFINS_API_KEY=วางคีย์ของคุณที่นี่
+py app.py
+```
+
+API Key จะอ่านจาก environment เท่านั้นและต้องไม่บันทึกลง Git แถบข่าวแสดง
+รายการสำคัญก่อน แปลงเวลาเป็นเวลาไทย และแปลหัวข้อผ่าน MyMemory Translation API
+โดยใช้ภาษาอังกฤษเดิมเป็นข้อมูลสำรอง
+
 หน้าซ้ายแสดง Top 100 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
 หน้าขวาแสดงทุก Symbol ที่เปิดใน Market Watch ของ Windsor MT5 โดยอัตโนมัติ
 รวม Forex, โลหะ และ CFD โปรแกรมตัด suffix ของโบรกเกอร์ เช่น `EURUSDc`
@@ -47,6 +58,9 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 | `MT5_USE_MARKET_WATCH` | true | อ่านทุกคู่ที่แสดงใน Market Watch |
 | `MT5_SYMBOL_SUFFIX` | `c` | suffix ที่ตัดออกจากชื่อบนหน้าเว็บ |
 | `MT5_PATH` | ตรวจอัตโนมัติ | path ของ `terminal64.exe` กรณีมี MT5 หลายตัว |
+| `ALTFINS_API_KEY` | ว่าง | API Key สำหรับ News และ Calendar Events |
+| `ALTFINS_CACHE_SECONDS` | 900 | อายุ cache ข่าว เพื่อลดการใช้ API quota |
+| `ENABLE_THAI_TRANSLATION` | true | แปลหัวข้อข่าวและ Events เป็นไทย |
 | `DASHBOARD_REFRESH_SECONDS` | 30 | ความถี่รีเฟรชหน้า |
 | `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |
 | `MARKET_CACHE_SECONDS` | 300 | อายุ cache การจัดอันดับ 24 ชั่วโมง |

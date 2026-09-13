@@ -20,6 +20,12 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["error"], "MT5 offline")
 
+    @patch("app.altfins_feed.get_feed", return_value=[{"title": "ข่าวสำคัญ"}])
+    def test_events_endpoint_is_independent(self, _feed):
+        response = self.client.get("/api/events")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["items"][0]["title"], "ข่าวสำคัญ")
+
 
 if __name__ == "__main__":
     unittest.main()

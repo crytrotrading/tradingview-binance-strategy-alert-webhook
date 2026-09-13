@@ -27,6 +27,9 @@
     main { width: min(1880px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0; }
     header { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
     h1 { font-size: clamp(23px, 3vw, 34px); margin: 0; letter-spacing: -.03em; }
+    nav { display: flex; gap: 7px; margin-top: 10px; }
+    nav a { color: #aebed2; text-decoration: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; }
+    nav a.active { color: white; background: #254d89; border-color: #3971c1; }
     .subtitle, #updated { color: var(--muted); }
     #updated { white-space: nowrap; font-size: 12px; }
     .table-wrap {
@@ -128,6 +131,7 @@
     <div>
       <h1>Fibo Retest Monitor</h1>
       <div class="subtitle">สัญญาณล่าสุด · โซน Fibonacci 0–23.6%</div>
+      <nav><a href="/" class="active">หน้า 1 · Fibo Retest</a><a href="/smc">หน้า 2 · SMCxSTO</a></nav>
     </div>
     <div id="updated">กำลังโหลดข้อมูล…</div>
   </header>

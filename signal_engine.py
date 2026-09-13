@@ -16,6 +16,7 @@ class Candle:
     low: float
     close: float
     volume: float
+    open: float | None = None
 
 
 @dataclass(frozen=True)

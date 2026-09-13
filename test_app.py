@@ -26,6 +26,12 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["items"][0]["title"], "ข่าวสำคัญ")
 
+    @patch("app._smc_crypto_dashboard", return_value=[{"symbol": "BTCUSDT", "status": "BUY"}])
+    def test_smc_crypto_endpoint(self, _dashboard):
+        response = self.client.get("/api/smc/crypto")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
+
 
 if __name__ == "__main__":
     unittest.main()

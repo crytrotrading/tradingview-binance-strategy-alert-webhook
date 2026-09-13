@@ -122,6 +122,7 @@ class Mt5MarketData:
                 low=float(rate["low"]),
                 close=float(rate["close"]),
                 volume=float(rate["tick_volume"] or 1),
+                open=float(rate["open"]),
             )
             for rate in rates[:-1]
         ]

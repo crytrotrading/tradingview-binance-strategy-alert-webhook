@@ -12,6 +12,7 @@ import requests
 from altfins_provider import AltFinsFeed
 from mt5_provider import Mt5MarketData
 from signal_engine import Candle, RetestStore, calculate_setup
+from smc_engine import calculate_smc_signal
 from trading_sessions import sessions_for_symbol
 
 app = Flask(__name__)
@@ -69,6 +70,7 @@ mt5_data = Mt5MarketData()
 altfins_feed = AltFinsFeed()
 cache_lock = Lock()
 analysis_cache = {}
+smc_cache = {}
 market_cache = None
 
 
@@ -149,6 +151,7 @@ def _closed_candles(symbol, timeframe):
             low=float(item[3]),
             close=float(item[4]),
             volume=float(item[5]),
+            open=float(item[1]),
         )
         for item in payload
         if int(item[6]) < now_ms
@@ -199,11 +202,86 @@ def _mt5_cell(symbol, timeframe, price):
         return {"status": "!", "price": price, "error": str(exc)}
 
 
+def _smc_result(signal, price):
+    if signal is None:
+        return {"status": "—", "price": price, "no_signal": True}
+    return {
+        "status": signal.direction,
+        "price": price,
+        "entry": signal.entry,
+        "take_profit": signal.take_profit,
+        "stop_loss": signal.stop_loss,
+        "rr": signal.rr,
+        "grade": signal.grade,
+        "timestamp": signal.timestamp,
+        "zone_top": signal.zone_top,
+        "zone_bottom": signal.zone_bottom,
+    }
+
+
+def _cached_smc(key, loader):
+    now = time.monotonic()
+    with cache_lock:
+        cached = smc_cache.get(key)
+        if cached and now - cached[0] < CACHE_SECONDS:
+            return cached[1]
+    minute, ob, trend = loader()
+    signal = calculate_smc_signal(
+        minute,
+        ob,
+        trend,
+        max_age_hours=max(1, int(os.getenv("SMC_SIGNAL_MAX_AGE_HOURS", "24"))),
+    )
+    with cache_lock:
+        smc_cache[key] = (now, signal)
+    return signal
+
+
+def _smc_binance_cell(symbol, price):
+    try:
+        signal = _cached_smc(
+            ("binance", symbol),
+            lambda: (
+                _closed_candles(symbol, "1m"),
+                _closed_candles(symbol, "5m"),
+                _closed_candles(symbol, "15m"),
+            ),
+        )
+        return _smc_result(signal, price)
+    except Exception as exc:
+        app.logger.warning("SMC Binance failed %s: %s", symbol, exc)
+        return {"status": "!", "price": price, "error": str(exc)}
+
+
+def _smc_mt5_cell(symbol, price):
+    try:
+        signal = _cached_smc(
+            ("mt5", symbol),
+            lambda: (
+                mt5_data.closed_candles(symbol, "1m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "5m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "15m", KLINE_LIMIT),
+            ),
+        )
+        return _smc_result(signal, price)
+    except Exception as exc:
+        app.logger.warning("SMC MT5 failed %s: %s", symbol, exc)
+        return {"status": "!", "price": price, "error": str(exc)}
+
+
 @app.get("/")
 def dashboard():
     return render_template(
         "index.html",
         timeframes=TIMEFRAMES,
+        refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
+    )
+
+
+@app.get("/smc")
+def smc_dashboard():
+    return render_template(
+        "smc.html",
         refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
     )
 
@@ -242,6 +320,27 @@ def _populate_rows(symbols, prices, cell_function, max_workers):
     return list(rows.values())
 
 
+def _populate_smc_rows(symbols, prices, cell_function, max_workers):
+    rows = {
+        symbol["exchange"]: {
+            "symbol": symbol["exchange"],
+            "display": symbol["display"],
+            "price": prices.get(symbol["exchange"]),
+        }
+        for symbol in symbols
+    }
+    with ThreadPoolExecutor(max_workers=min(max_workers, max(1, len(symbols)))) as pool:
+        jobs = {
+            pool.submit(cell_function, symbol["exchange"], prices.get(symbol["exchange"])): symbol["exchange"]
+            for symbol in symbols
+            if prices.get(symbol["exchange"]) is not None
+        }
+        for future in as_completed(jobs):
+            symbol = jobs[future]
+            rows[symbol].update(future.result())
+    return list(rows.values())
+
+
 def _crypto_dashboard():
     symbols = _market_symbols()
     return _populate_rows(symbols, _current_prices(symbols), _cell, 20)
@@ -255,6 +354,25 @@ def _forex_dashboard():
     )
     prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
     rows = _populate_rows(symbols, prices, _mt5_cell, 8)
+    for row in rows:
+        row["trading_hours"] = sessions_for_symbol(row["display"])
+    return rows
+
+
+def _smc_crypto_dashboard():
+    symbols = _market_symbols()
+    prices = _current_prices(symbols)
+    return _populate_smc_rows(symbols, prices, _smc_binance_cell, 20)
+
+
+def _smc_forex_dashboard():
+    symbols = (
+        mt5_data.market_watch_symbols()
+        if MT5_USE_MARKET_WATCH
+        else mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    )
+    prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
+    rows = _populate_smc_rows(symbols, prices, _smc_mt5_cell, 8)
     for row in rows:
         row["trading_hours"] = sessions_for_symbol(row["display"])
     return rows
@@ -291,6 +409,38 @@ def forex_data():
             {
                 "updated_at": int(time.time() * 1000),
                 "timeframes": TIMEFRAMES,
+                "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
+@app.get("/api/smc/crypto")
+def smc_crypto_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _smc_crypto_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"โหลด SMC Crypto ไม่สำเร็จ: {exc}"}), 502
+
+
+@app.get("/api/smc/forex")
+def smc_forex_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _smc_forex_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
                 "rows": [],
                 "error": str(exc),
             }

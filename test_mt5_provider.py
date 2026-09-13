@@ -26,9 +26,9 @@ class FakeMt5:
 
     def copy_rates_from_pos(self, symbol, timeframe, start, count):
         return [
-            {"time": 1, "high": 1.2, "low": 1.0, "close": 1.1, "tick_volume": 10},
-            {"time": 2, "high": 1.3, "low": 1.1, "close": 1.2, "tick_volume": 12},
-            {"time": 3, "high": 1.4, "low": 1.2, "close": 1.3, "tick_volume": 8},
+            {"time": 1, "open": 1.05, "high": 1.2, "low": 1.0, "close": 1.1, "tick_volume": 10},
+            {"time": 2, "open": 1.15, "high": 1.3, "low": 1.1, "close": 1.2, "tick_volume": 12},
+            {"time": 3, "open": 1.25, "high": 1.4, "low": 1.2, "close": 1.3, "tick_volume": 8},
         ]
 
     def last_error(self):

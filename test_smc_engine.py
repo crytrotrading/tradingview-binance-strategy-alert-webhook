@@ -21,9 +21,9 @@ class SmcEngineTests(unittest.TestCase):
             candle(index, 109, 110, 108, 109)
             for index in range(30)
         ]
-        candles[10] = candle(10, 102, 102, 100, 101)
-        candles[11] = candle(11, 102.5, 104, 102, 103.5)
-        candles[12] = candle(12, 103.5, 105, 103, 104.5)
+        candles[15] = candle(15, 102, 102, 100, 101)
+        candles[16] = candle(16, 102.5, 104, 102, 103.5)
+        candles[17] = candle(17, 103.5, 105, 103, 104.5)
         zones = _candidate_zones(candles)
         self.assertTrue(any(zone.bull and zone.grade in {"A", "B"} for zone in zones))
 

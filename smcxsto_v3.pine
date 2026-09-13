@@ -64,8 +64,8 @@ int dLen = input.int(3, "%D", minval=1, inline="sto", group=G_STO)
 float oversold = input.float(30, "ขายมากเกินไป", minval=0, maxval=50, inline="levels", group=G_STO)
 float overbought = input.float(70, "ซื้อมากเกินไป", minval=50, maxval=100, inline="levels", group=G_STO,
  tooltip="ตามภาพ = 30/70; ค่ามาตรฐานหลักสูตร = 20/80")
-string triggerMode = input.string("ทั้งสองอย่าง", "เงื่อนไข trigger",
- options=["ทั้งสองอย่าง", "เส้นตัดเท่านั้น", "ออกจากเขตเท่านั้น"], group=G_STO)
+string triggerMode = input.string("ทั้งสองอย่าง (เข้มสุด)", "เงื่อนไข trigger",
+ options=["K ตัด D", "K ออกจากโซน OS/OB", "ทั้งสองอย่าง (เข้มสุด)"], group=G_STO)
 string armedMode = input.string("ตลอดเวลาที่อยู่ในโซน", "นับว่า armed เมื่อไหร่",
  options=["ตลอดเวลาที่อยู่ในโซน", "เมื่อ STO เข้าเขต"], group=G_STO)
 int armedAfterExit = input.int(12, "หลังออกจากโซนแล้ว ยัง armed ต่อได้กี่แท่ง", minval=0, group=G_STO)
@@ -447,8 +447,8 @@ if array.size(zoneBoxes) > 0
             bool timingPass = alertTiming == "ทันที" or barstate.isconfirmed
             bool exitEvent = bull ? bullExitEvent : bearExitEvent
             bool crossedAndOutside = array.get(zoneSawCross, i) and (bull ? stoK > oversold : stoK < overbought)
-            bool selectedStoTrigger = triggerMode == "ทั้งสองอย่าง" ? crossedAndOutside :
-             triggerMode == "เส้นตัดเท่านั้น" ? crossEvent : exitEvent
+            bool selectedStoTrigger = triggerMode == "ทั้งสองอย่าง (เข้มสุด)" ? crossedAndOutside :
+             triggerMode == "K ตัด D" ? crossEvent : exitEvent
             bool stoPass = not requireSto or (selectedStoTrigger and array.get(zoneSawExtreme, i))
             bool ready = not array.get(zoneBlocked, i) and armedReady and locationPass and sideTrendPass and sideAtrPass and cooldownPass and timingPass and stoPass
             if ready and not buySignal and not sellSignal

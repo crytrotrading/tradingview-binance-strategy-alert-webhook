@@ -8,12 +8,12 @@ import json
 import os
 from threading import Lock
 import time
-from zoneinfo import ZoneInfo
 
 import requests
 
 
 MCP_URL = "https://mcp.altfins.com/mcp"
+BANGKOK_TZ = timezone(timedelta(hours=7))
 IMPORTANT_WORDS = (
     "fed", "federal reserve", "sec", "etf", "hack", "exploit", "listing",
     "delist", "unlock", "airdrop", "mainnet", "regulation", "approval",
@@ -217,8 +217,7 @@ class AltFinsFeed:
             return [7, 19]
 
     def _slot_key(self, now: datetime | None = None) -> str:
-        bangkok = ZoneInfo("Asia/Bangkok")
-        local_now = now.astimezone(bangkok) if now else datetime.now(bangkok)
+        local_now = now.astimezone(BANGKOK_TZ) if now else datetime.now(BANGKOK_TZ)
         hours = self._refresh_hours()
         eligible = [hour for hour in hours if hour <= local_now.hour]
         if eligible:
@@ -230,8 +229,7 @@ class AltFinsFeed:
         return f"{slot_date.isoformat()}-{slot_hour:02d}"
 
     def _next_refresh_at(self, now: datetime | None = None) -> int:
-        bangkok = ZoneInfo("Asia/Bangkok")
-        local_now = now.astimezone(bangkok) if now else datetime.now(bangkok)
+        local_now = now.astimezone(BANGKOK_TZ) if now else datetime.now(BANGKOK_TZ)
         for hour in self._refresh_hours():
             candidate = local_now.replace(hour=hour, minute=0, second=0, microsecond=0)
             if candidate > local_now:

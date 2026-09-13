@@ -1,9 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from zoneinfo import ZoneInfo
 
 from altfins_provider import AltFinsFeed
 
@@ -36,10 +35,10 @@ class AltFinsFeedTests(unittest.TestCase):
 
     def test_uses_two_daily_thailand_refresh_slots(self):
         feed = AltFinsFeed()
-        timezone = ZoneInfo("Asia/Bangkok")
-        morning = datetime(2026, 9, 13, 10, 0, tzinfo=timezone)
-        afternoon = datetime(2026, 9, 13, 18, 59, tzinfo=timezone)
-        evening = datetime(2026, 9, 13, 20, 0, tzinfo=timezone)
+        bangkok = timezone(timedelta(hours=7))
+        morning = datetime(2026, 9, 13, 10, 0, tzinfo=bangkok)
+        afternoon = datetime(2026, 9, 13, 18, 59, tzinfo=bangkok)
+        evening = datetime(2026, 9, 13, 20, 0, tzinfo=bangkok)
         self.assertEqual(feed._slot_key(morning), "2026-09-13-07")
         self.assertEqual(feed._slot_key(afternoon), "2026-09-13-07")
         self.assertEqual(feed._slot_key(evening), "2026-09-13-19")

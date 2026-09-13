@@ -238,6 +238,7 @@ var array<bool> zoneFvgs = array.new_bool()
 var array<bool> zoneBreakers = array.new_bool()
 var array<bool> zoneArmed = array.new_bool()
 var array<bool> zoneSawExtreme = array.new_bool()
+var array<bool> zoneSawCross = array.new_bool()
 var array<bool> zoneBlocked = array.new_bool()
 var array<int> zoneAges = array.new_int()
 var array<int> zoneCreatedBars = array.new_int()
@@ -257,6 +258,7 @@ f_deleteZone(int idx) =>
     array.remove(zoneBreakers, idx)
     array.remove(zoneArmed, idx)
     array.remove(zoneSawExtreme, idx)
+    array.remove(zoneSawCross, idx)
     array.remove(zoneBlocked, idx)
     array.remove(zoneAges, idx)
     array.remove(zoneCreatedBars, idx)
@@ -303,6 +305,7 @@ f_addZone(bool bull, float inTop, float inBottom, float a, int leftTime, string 
         array.push(zoneBreakers, isBreaker)
         array.push(zoneArmed, false)
         array.push(zoneSawExtreme, false)
+        array.push(zoneSawCross, false)
         array.push(zoneBlocked, false)
         array.push(zoneAges, 0)
         array.push(zoneCreatedBars, bar_index)
@@ -368,10 +371,10 @@ bool stoBearExit = realtimeSto ? rtStoBearExit : closedStoBearExit
 int stoTime = realtimeSto ? rtStoTime : closedStoTime
 bool newStoSample = ta.change(stoTime) != 0
 bool stoBarAllowed = realtimeSto or newStoSample
-bool bullTrigger = stoBarAllowed and (triggerMode == "ทั้งสองอย่าง" ? stoBullCross and stoK > oversold :
- triggerMode == "เส้นตัดเท่านั้น" ? stoBullCross : stoBullExit)
-bool bearTrigger = stoBarAllowed and (triggerMode == "ทั้งสองอย่าง" ? stoBearCross and stoK < overbought :
- triggerMode == "เส้นตัดเท่านั้น" ? stoBearCross : stoBearExit)
+bool bullCrossEvent = stoBarAllowed and stoBullCross
+bool bearCrossEvent = stoBarAllowed and stoBearCross
+bool bullExitEvent = stoBarAllowed and stoBullExit
+bool bearExitEvent = stoBarAllowed and stoBearExit
 
 var int lastSignalBar = -100000
 bool buySignal = false
@@ -424,10 +427,14 @@ if array.size(zoneBoxes) > 0
             if exitedAt >= 0 and bar_index - exitedAt > armedAfterExit
                 array.set(zoneArmed, i, false)
                 array.set(zoneSawExtreme, i, false)
+                array.set(zoneSawCross, i, false)
 
             bool extreme = bull ? stoK < oversold : stoK > overbought
             if array.get(zoneArmed, i) and extreme
                 array.set(zoneSawExtreme, i, true)
+            bool crossEvent = bull ? bullCrossEvent : bearCrossEvent
+            if array.get(zoneArmed, i) and crossEvent
+                array.set(zoneSawCross, i, true)
             bool armedReady = array.get(zoneArmed, i) and
              (armedMode == "ตลอดเวลาที่อยู่ในโซน" or array.get(zoneSawExtreme, i))
             bool withinTolerance = close <= top + signalZoneTolerance * za and close >= bottom - signalZoneTolerance * za
@@ -438,7 +445,11 @@ if array.size(zoneBoxes) > 0
             bool sideAtrPass = not useAtr or not atrRelevant or atrPass
             bool cooldownPass = bar_index - lastSignalBar >= signalCooldown
             bool timingPass = alertTiming == "ทันที" or barstate.isconfirmed
-            bool stoPass = not requireSto or (stoBarAllowed and (bull ? bullTrigger : bearTrigger) and array.get(zoneSawExtreme, i))
+            bool exitEvent = bull ? bullExitEvent : bearExitEvent
+            bool crossedAndOutside = array.get(zoneSawCross, i) and (bull ? stoK > oversold : stoK < overbought)
+            bool selectedStoTrigger = triggerMode == "ทั้งสองอย่าง" ? crossedAndOutside :
+             triggerMode == "เส้นตัดเท่านั้น" ? crossEvent : exitEvent
+            bool stoPass = not requireSto or (selectedStoTrigger and array.get(zoneSawExtreme, i))
             bool ready = not array.get(zoneBlocked, i) and armedReady and locationPass and sideTrendPass and sideAtrPass and cooldownPass and timingPass and stoPass
             if ready and not buySignal and not sellSignal
                 buySignal := bull
@@ -452,6 +463,7 @@ if array.size(zoneBoxes) > 0
                 lastSignalBar := bar_index
                 array.set(zoneArmed, i, false)
                 array.set(zoneSawExtreme, i, false)
+                array.set(zoneSawCross, i, false)
 
 // Display only the nearest requested number of zones on each side.
 if barstate.islast and array.size(zoneBoxes) > 0

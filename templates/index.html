@@ -49,6 +49,8 @@
     .symbol { font-weight: 750; font-size: 16px; }
     .exchange { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
     .price { display: block; color: #a9b7c9; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .trading-hours { min-width: 118px; color: #d5deea; font-size: 11px; white-space: nowrap; }
+    .trading-hours small { display: block; color: var(--muted); font-size: 9px; }
     .signal {
       display: inline-flex;
       align-items: center;
@@ -124,11 +126,12 @@
           <thead>
             <tr>
               <th>Market</th>
+              {% if provider == "forex" %}<th>เวลาเทรด (ไทย)</th>{% endif %}
               {% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}
             </tr>
           </thead>
           <tbody id="{{ provider }}-markets">
-            <tr id="{{ provider }}-loading"><td colspan="{{ timeframes | length + 1 }}">{{ loading_text }}</td></tr>
+            <tr id="{{ provider }}-loading"><td colspan="{{ timeframes | length + (2 if provider == 'forex' else 1) }}">{{ loading_text }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -186,6 +189,20 @@
     price.textContent = "—";
     market.append(name, exchange, price);
     element.appendChild(market);
+
+    if (provider === "forex") {
+      const session = document.createElement("td");
+      session.className = "trading-hours";
+      const primary = row.trading_hours?.primary;
+      const secondary = row.trading_hours?.secondary;
+      session.textContent = primary || "—";
+      if (secondary) {
+        const secondaryText = document.createElement("small");
+        secondaryText.textContent = `รอง ${secondary}`;
+        session.appendChild(secondaryText);
+      }
+      element.appendChild(session);
+    }
 
     for (const timeframe of timeframes) {
       const cell = document.createElement("td");

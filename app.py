@@ -11,6 +11,7 @@ import requests
 
 from mt5_provider import Mt5MarketData
 from signal_engine import Candle, RetestStore, calculate_setup
+from trading_sessions import sessions_for_symbol
 
 app = Flask(__name__)
 
@@ -251,7 +252,10 @@ def _forex_dashboard():
         else mt5_data.resolve_symbols(FOREX_SYMBOLS)
     )
     prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
-    return _populate_rows(symbols, prices, _mt5_cell, 8)
+    rows = _populate_rows(symbols, prices, _mt5_cell, 8)
+    for row in rows:
+        row["trading_hours"] = sessions_for_symbol(row["display"])
+    return rows
 
 
 @app.get("/api/crypto")

@@ -131,7 +131,7 @@ class AltFinsFeed:
         items = self._call_tool(
             "news_getCryptoNewsMessages",
             {
-                "from": "last 2 days",
+                "from": "last 7 days",
                 "to": "today",
                 "page": 1,
                 "size": 15,

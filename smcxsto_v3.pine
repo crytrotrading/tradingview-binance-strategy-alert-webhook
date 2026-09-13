@@ -611,8 +611,8 @@ f_tableSize() =>
 var table checklist = table.new(f_tablePosition(), 2, 9, frame_color=tableBorderColor,
  frame_width=tableFrameWidth, border_color=tableBorderColor, border_width=tableBorderWidth)
 
-f_cell(int col, int row, string text, color bg) =>
-    table.cell(checklist, col, row, text, bgcolor=color.new(bg, tableTransparency),
+f_cell(int col, int row, string cellText, color bg) =>
+    table.cell(checklist, col, row, cellText, bgcolor=color.new(bg, tableTransparency),
      text_color=tableTextColor, text_size=f_tableSize())
 
 bool anyArmed = false

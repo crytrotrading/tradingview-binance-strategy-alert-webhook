@@ -86,6 +86,7 @@
     }
     element.dataset.rank=rank;
     element.dataset.active=row.status==="BUY"||row.status==="SELL"?"1":"0";
+    element.dataset.timestamp=row.timestamp||"0";
     const cells=element.children;
     cells[0].replaceChildren();
     const name=document.createElement("span");name.className="symbol";name.textContent=row.display;
@@ -104,7 +105,11 @@
     const body=document.querySelector(`#${provider}-rows`),query=document.querySelector("#search").value.trim().toLowerCase(),only=document.querySelector("#active-only").checked;
     const rows=[...body.querySelectorAll("tr[data-symbol]")];let shown=0;
     rows.forEach(row=>{const visible=(!query||row.dataset.search.includes(query))&&(!only||row.dataset.active==="1");row.hidden=!visible;if(visible)shown++});
-    rows.sort((a,b)=>Number(b.dataset.active)-Number(a.dataset.active)||Number(a.dataset.rank)-Number(b.dataset.rank)).forEach(row=>body.appendChild(row));
+    rows.sort((a,b)=>
+      Number(b.dataset.active)-Number(a.dataset.active)||
+      Number(b.dataset.timestamp)-Number(a.dataset.timestamp)||
+      Number(a.dataset.rank)-Number(b.dataset.rank)
+    ).forEach(row=>body.appendChild(row));
     document.querySelector(`#${provider}-count`).textContent=`แสดง ${shown} / ${rows.length} คู่`;
   }
   async function update(provider){

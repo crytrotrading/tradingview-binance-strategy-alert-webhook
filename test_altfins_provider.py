@@ -1,6 +1,9 @@
+from datetime import datetime
 import os
+import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 from altfins_provider import AltFinsFeed
 
@@ -30,6 +33,39 @@ class AltFinsFeedTests(unittest.TestCase):
             }
         }
         self.assertEqual(AltFinsFeed._symbol_from_event(item), "BTC")
+
+    def test_uses_two_daily_thailand_refresh_slots(self):
+        feed = AltFinsFeed()
+        timezone = ZoneInfo("Asia/Bangkok")
+        morning = datetime(2026, 9, 13, 10, 0, tzinfo=timezone)
+        afternoon = datetime(2026, 9, 13, 18, 59, tzinfo=timezone)
+        evening = datetime(2026, 9, 13, 20, 0, tzinfo=timezone)
+        self.assertEqual(feed._slot_key(morning), "2026-09-13-07")
+        self.assertEqual(feed._slot_key(afternoon), "2026-09-13-07")
+        self.assertEqual(feed._slot_key(evening), "2026-09-13-19")
+
+    def test_persistent_cache_prevents_repeat_api_calls(self):
+        item = {
+            "id": "news-1",
+            "important": True,
+            "score": 1,
+            "timestamp": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "feed.json")
+            with patch.dict(os.environ, {"ALTFINS_CACHE_FILE": path}):
+                feed = AltFinsFeed()
+                feed._events = Mock(return_value=[])
+                feed._news = Mock(return_value=[item])
+                self.assertEqual(feed.get_feed(), [item])
+                self.assertEqual(feed.get_feed(), [item])
+                feed._events.assert_called_once()
+                feed._news.assert_called_once()
+
+                restarted = AltFinsFeed()
+                restarted._events = Mock(side_effect=AssertionError("API called"))
+                restarted._news = Mock(side_effect=AssertionError("API called"))
+                self.assertEqual(restarted.get_feed(), [item])
 
 
 if __name__ == "__main__":

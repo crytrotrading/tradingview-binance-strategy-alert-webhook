@@ -301,7 +301,14 @@ def forex_data():
 def events_data():
     try:
         items = altfins_feed.get_feed()
-        return jsonify({"updated_at": int(time.time() * 1000), "items": items})
+        cache_info = altfins_feed.cache_info()
+        return jsonify(
+            {
+                "updated_at": cache_info["updated_at"],
+                "next_refresh_at": cache_info["next_refresh_at"],
+                "items": items,
+            }
+        )
     except Exception as exc:
         return jsonify(
             {

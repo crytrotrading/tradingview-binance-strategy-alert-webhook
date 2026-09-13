@@ -8,6 +8,7 @@ import json
 import os
 from threading import Lock
 import time
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -23,10 +24,18 @@ IMPORTANT_WORDS = (
 class AltFinsFeed:
     def __init__(self) -> None:
         self._lock = Lock()
-        self._cached: tuple[float, list[dict]] | None = None
+        self._cached: tuple[str, list[dict]] | None = None
+        self._last_updated_at = 0
         self._translations: dict[str, str] = {}
         self._http = requests.Session()
         self._http.headers.update({"User-Agent": "FiboRetestDashboard/1.0"})
+        cache_root = os.getenv("LOCALAPPDATA") or os.path.join(
+            os.path.expanduser("~"), ".cache"
+        )
+        self._cache_path = os.getenv(
+            "ALTFINS_CACHE_FILE",
+            os.path.join(cache_root, "FiboRetestMonitor", "altfins-feed.json"),
+        )
 
     @property
     def api_key(self) -> str:
@@ -194,12 +203,92 @@ class AltFinsFeed:
             )
         return output
 
+    @staticmethod
+    def _refresh_hours() -> list[int]:
+        try:
+            hours = {
+                int(value.strip())
+                for value in os.getenv("ALTFINS_REFRESH_HOURS", "7,19").split(",")
+                if value.strip()
+            }
+            valid = sorted(hour for hour in hours if 0 <= hour <= 23)
+            return valid or [7, 19]
+        except ValueError:
+            return [7, 19]
+
+    def _slot_key(self, now: datetime | None = None) -> str:
+        bangkok = ZoneInfo("Asia/Bangkok")
+        local_now = now.astimezone(bangkok) if now else datetime.now(bangkok)
+        hours = self._refresh_hours()
+        eligible = [hour for hour in hours if hour <= local_now.hour]
+        if eligible:
+            slot_date = local_now.date()
+            slot_hour = eligible[-1]
+        else:
+            slot_date = (local_now - timedelta(days=1)).date()
+            slot_hour = hours[-1]
+        return f"{slot_date.isoformat()}-{slot_hour:02d}"
+
+    def _next_refresh_at(self, now: datetime | None = None) -> int:
+        bangkok = ZoneInfo("Asia/Bangkok")
+        local_now = now.astimezone(bangkok) if now else datetime.now(bangkok)
+        for hour in self._refresh_hours():
+            candidate = local_now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if candidate > local_now:
+                return int(candidate.timestamp() * 1000)
+        tomorrow = local_now + timedelta(days=1)
+        candidate = tomorrow.replace(
+            hour=self._refresh_hours()[0], minute=0, second=0, microsecond=0
+        )
+        return int(candidate.timestamp() * 1000)
+
+    def _read_cache(self) -> tuple[str, list[dict], int] | None:
+        try:
+            with open(self._cache_path, encoding="utf-8") as cache_file:
+                data = json.load(cache_file)
+            if not isinstance(data.get("items"), list) or not data.get("slot"):
+                return None
+            return data["slot"], data["items"], int(data.get("updated_at", 0))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return None
+
+    def _write_cache(self, slot: str, items: list[dict], updated_at: int) -> None:
+        directory = os.path.dirname(self._cache_path)
+        temporary = f"{self._cache_path}.tmp"
+        try:
+            os.makedirs(directory, exist_ok=True)
+            with open(temporary, "w", encoding="utf-8") as cache_file:
+                json.dump(
+                    {"slot": slot, "updated_at": updated_at, "items": items},
+                    cache_file,
+                    ensure_ascii=False,
+                )
+            os.replace(temporary, self._cache_path)
+        except OSError:
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass
+
+    def cache_info(self) -> dict[str, int]:
+        return {
+            "updated_at": self._last_updated_at,
+            "next_refresh_at": self._next_refresh_at(),
+        }
+
     def get_feed(self) -> list[dict]:
-        ttl = max(300, int(os.getenv("ALTFINS_CACHE_SECONDS", "900")))
-        now = time.monotonic()
+        slot = self._slot_key()
         with self._lock:
-            if self._cached and now - self._cached[0] < ttl:
+            if self._cached and self._cached[0] == slot:
                 return self._cached[1]
+            disk_cache = self._read_cache()
+            if disk_cache and disk_cache[0] == slot:
+                self._cached = (disk_cache[0], disk_cache[1])
+                self._last_updated_at = disk_cache[2]
+                return disk_cache[1]
+
+            stale_items = disk_cache[1] if disk_cache else []
+            stale_updated_at = disk_cache[2] if disk_cache else 0
             errors = []
             items = []
             for loader in (self._events, self._news):
@@ -208,8 +297,19 @@ class AltFinsFeed:
                 except (requests.RequestException, RuntimeError, ValueError, json.JSONDecodeError) as exc:
                     errors.append(str(exc))
             if not items and errors:
+                if stale_items:
+                    self._cached = (slot, stale_items)
+                    self._last_updated_at = stale_updated_at
+                    return stale_items
                 raise RuntimeError(" | ".join(errors))
+            if errors and stale_items:
+                self._cached = (slot, stale_items)
+                self._last_updated_at = stale_updated_at
+                return stale_items
             items.sort(key=lambda item: (not item["important"], -item["score"], -item["timestamp"]))
             items = items[:15]
-            self._cached = (now, items)
+            updated_at = int(time.time() * 1000)
+            self._cached = (slot, items)
+            self._last_updated_at = updated_at
+            self._write_cache(slot, items, updated_at)
             return items

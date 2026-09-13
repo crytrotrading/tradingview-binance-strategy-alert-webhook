@@ -335,7 +335,15 @@
     }
   }
 
-  function renderEvents(items, error = null) {
+  function thaiDateTime(timestamp) {
+    return timestamp
+      ? new Intl.DateTimeFormat("th-TH", {
+          dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok"
+        }).format(new Date(timestamp))
+      : "—";
+  }
+
+  function renderEvents(items, error = null, updatedAt = null, nextRefreshAt = null) {
     const list = document.querySelector("#events-list");
     const status = document.querySelector("#events-status");
     list.replaceChildren();
@@ -346,7 +354,9 @@
       return;
     }
     status.className = "";
-    status.textContent = items.length ? "เวลาไทย · เรียงรายการสำคัญก่อน" : "ยังไม่มี Events ในช่วงนี้";
+    status.textContent = items.length
+      ? `อัปเดต ${thaiDateTime(updatedAt)} · รอบถัดไป ${thaiDateTime(nextRefreshAt)}`
+      : "ยังไม่มี Events ในช่วงนี้";
     document.querySelector("#events-count").textContent = `${items.length} รายการ`;
     for (const item of items) {
       const card = document.createElement(item.url ? "a" : "div");
@@ -362,11 +372,7 @@
       tag.className = "event-tag" + (item.important ? " event-important" : "");
       tag.textContent = item.important ? `สำคัญ · ${item.kind}` : item.kind;
       const date = document.createElement("span");
-      date.textContent = item.timestamp
-        ? new Intl.DateTimeFormat("th-TH", {
-            dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok"
-          }).format(new Date(item.timestamp))
-        : "";
+      date.textContent = item.timestamp ? thaiDateTime(item.timestamp) : "";
       meta.append(tag, date);
       const title = document.createElement("div");
       title.className = "event-title";
@@ -394,7 +400,12 @@
     try {
       const response = await fetch("/api/events", { cache: "no-store" });
       const data = await response.json();
-      renderEvents(data.items || [], data.error);
+      renderEvents(
+        data.items || [],
+        data.error,
+        data.updated_at,
+        data.next_refresh_at
+      );
     } catch (error) {
       renderEvents([], error.message);
     } finally {

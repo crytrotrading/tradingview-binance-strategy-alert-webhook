@@ -31,6 +31,10 @@ API Key จะอ่านจาก environment เท่านั้นแล�
 รายการสำคัญก่อน แปลงเวลาเป็นเวลาไทย และแปลหัวข้อผ่าน MyMemory Translation API
 โดยใช้ภาษาอังกฤษเดิมเป็นข้อมูลสำรอง
 
+altFINS อัปเดตเพียง 2 รอบต่อวันเวลาไทย เวลา 07:00 และ 19:00 ข้อมูลถูกบันทึก
+ลงไฟล์ใน `%LOCALAPPDATA%\FiboRetestMonitor` การรีเฟรชหน้าเว็บหรือปิด–เปิด
+โปรแกรมจะใช้ข้อมูลเดิมโดยไม่เสียเครดิตเพิ่มจนถึงรอบถัดไป
+
 หน้าซ้ายแสดง Top 100 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
 หน้าขวาแสดงทุก Symbol ที่เปิดใน Market Watch ของ Windsor MT5 โดยอัตโนมัติ
 รวม Forex, โลหะ และ CFD โปรแกรมตัด suffix ของโบรกเกอร์ เช่น `EURUSDc`
@@ -59,7 +63,8 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 | `MT5_SYMBOL_SUFFIX` | `c` | suffix ที่ตัดออกจากชื่อบนหน้าเว็บ |
 | `MT5_PATH` | ตรวจอัตโนมัติ | path ของ `terminal64.exe` กรณีมี MT5 หลายตัว |
 | `ALTFINS_API_KEY` | ว่าง | API Key สำหรับ News และ Calendar Events |
-| `ALTFINS_CACHE_SECONDS` | 900 | อายุ cache ข่าว เพื่อลดการใช้ API quota |
+| `ALTFINS_REFRESH_HOURS` | `7,19` | ชั่วโมงอัปเดตข่าวตามเวลาไทย |
+| `ALTFINS_CACHE_FILE` | Local AppData | ไฟล์ cache ข่าวถาวร |
 | `ENABLE_THAI_TRANSLATION` | true | แปลหัวข้อข่าวและ Events เป็นไทย |
 | `DASHBOARD_REFRESH_SECONDS` | 30 | ความถี่รีเฟรชหน้า |
 | `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |

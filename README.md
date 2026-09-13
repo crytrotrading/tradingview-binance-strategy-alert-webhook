@@ -21,8 +21,9 @@ python app.py
 บน Windows ให้เปิดและล็อกอิน Windsor MT5 ก่อน จากนั้นเปิด `http://localhost:5000`
 
 หน้าซ้ายแสดง Top 100 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
-หน้าขวาแสดง Forex และ XAUUSD จาก Windsor MT5 ที่เปิดอยู่ โปรแกรมตรวจ suffix
-ของโบรกเกอร์ เช่น `EURUSDc` ให้อัตโนมัติ ทั้งสองฝั่งคำนวณ Timeframe
+หน้าขวาแสดงทุก Symbol ที่เปิดใน Market Watch ของ Windsor MT5 โดยอัตโนมัติ
+รวม Forex, โลหะ และ CFD โปรแกรมตัด suffix ของโบรกเกอร์ เช่น `EURUSDc`
+เพื่อแสดงเป็น `EURUSD` ทั้งสองฝั่งคำนวณ Timeframe
 `1m, 5m, 15m, 1h, 4h, 1d`
 
 ## ตั้งค่า
@@ -40,6 +41,8 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 | `TOP_MARKETS` | 100 | จำนวนคู่ USDT อันดับสูงสุด (สูงสุด 100) |
 | `PINNED_SYMBOLS` | ว่าง | คู่ Binance ที่แสดงเพิ่มนอกเหนือจากอันดับ |
 | `FOREX_SYMBOLS` | 24 คู่หลัก | คู่ที่อ่านจาก Windsor MT5 |
+| `MT5_USE_MARKET_WATCH` | true | อ่านทุกคู่ที่แสดงใน Market Watch |
+| `MT5_SYMBOL_SUFFIX` | `c` | suffix ที่ตัดออกจากชื่อบนหน้าเว็บ |
 | `MT5_PATH` | ตรวจอัตโนมัติ | path ของ `terminal64.exe` กรณีมี MT5 หลายตัว |
 | `DASHBOARD_REFRESH_SECONDS` | 30 | ความถี่รีเฟรชหน้า |
 | `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |

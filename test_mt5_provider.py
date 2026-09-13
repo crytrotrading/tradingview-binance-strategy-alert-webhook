@@ -15,6 +15,7 @@ class FakeMt5:
         return [
             SimpleNamespace(name="EURUSDc", visible=True),
             SimpleNamespace(name="XAUUSDc", visible=True),
+            SimpleNamespace(name="HIDDENc", visible=False),
         ]
 
     def symbol_select(self, symbol, enabled):
@@ -57,6 +58,15 @@ class Mt5MarketDataTests(unittest.TestCase):
         candles = self.provider.closed_candles("EURUSDc", "1m", 2)
         self.assertEqual(len(candles), 2)
         self.assertEqual(candles[-1].open_time, 2000)
+
+    def test_returns_all_visible_market_watch_symbols(self):
+        self.assertEqual(
+            self.provider.market_watch_symbols(),
+            [
+                {"display": "EURUSD", "exchange": "EURUSDc"},
+                {"display": "XAUUSD", "exchange": "XAUUSDc"},
+            ],
+        )
 
 
 if __name__ == "__main__":

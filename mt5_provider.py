@@ -27,6 +27,7 @@ class Mt5MarketData:
     def __init__(self) -> None:
         self._lock = Lock()
         self._resolved: dict[str, str] = {}
+        self._suffix = os.getenv("MT5_SYMBOL_SUFFIX", "c")
 
     def connect(self) -> None:
         if mt5 is None:
@@ -77,6 +78,25 @@ class Mt5MarketData:
                 self._resolved[base] = selected
                 output.append({"display": base, "exchange": selected})
             return output
+
+    def market_watch_symbols(self) -> list[dict[str, str]]:
+        """Return every instrument currently selected in MT5 Market Watch."""
+        self.connect()
+        with self._lock:
+            available = list(mt5.symbols_get() or [])
+        selected = [item.name for item in available if item.visible]
+        selected.sort(key=str.upper)
+        return [
+            {
+                "display": (
+                    name[: -len(self._suffix)]
+                    if self._suffix and name.endswith(self._suffix)
+                    else name
+                ),
+                "exchange": name,
+            }
+            for name in selected
+        ]
 
     def current_price(self, symbol: str) -> float:
         self.connect()

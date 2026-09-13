@@ -32,6 +32,9 @@ FOREX_SYMBOLS = [
     ).split(",")
     if item.strip()
 ]
+MT5_USE_MARKET_WATCH = os.getenv("MT5_USE_MARKET_WATCH", "true").lower() not in {
+    "0", "false", "no",
+}
 STATE_DB = os.getenv(
     "STATE_DB", os.path.join(tempfile.gettempdir(), "fibo-retest-state.db")
 )
@@ -242,7 +245,11 @@ def _crypto_dashboard():
 
 
 def _forex_dashboard():
-    symbols = mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    symbols = (
+        mt5_data.market_watch_symbols()
+        if MT5_USE_MARKET_WATCH
+        else mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    )
     prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
     return _populate_rows(symbols, prices, _mt5_cell, 8)
 

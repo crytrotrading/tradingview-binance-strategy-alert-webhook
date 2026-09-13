@@ -23,7 +23,7 @@ TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
 KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
 CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "60"))
 MARKET_CACHE_SECONDS = int(os.getenv("MARKET_CACHE_SECONDS", "300"))
-TOP_MARKETS = min(100, max(1, int(os.getenv("TOP_MARKETS", "100"))))
+TOP_MARKETS = min(200, max(1, int(os.getenv("TOP_MARKETS", "200"))))
 FOREX_SYMBOLS = [
     item.strip().upper()
     for item in os.getenv(

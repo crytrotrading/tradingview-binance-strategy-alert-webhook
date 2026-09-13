@@ -35,7 +35,7 @@ altFINS อัปเดตเพียง 2 รอบต่อวันเวล
 ลงไฟล์ใน `%LOCALAPPDATA%\FiboRetestMonitor` การรีเฟรชหน้าเว็บหรือปิด–เปิด
 โปรแกรมจะใช้ข้อมูลเดิมโดยไม่เสียเครดิตเพิ่มจนถึงรอบถัดไป
 
-หน้าซ้ายแสดง Top 100 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
+หน้าซ้ายแสดง Top 200 คู่ USDT จาก Binance เรียงตามมูลค่าซื้อขาย 24 ชั่วโมง
 หน้าขวาแสดงทุก Symbol ที่เปิดใน Market Watch ของ Windsor MT5 โดยอัตโนมัติ
 รวม Forex, โลหะ และ CFD โปรแกรมตัด suffix ของโบรกเกอร์ เช่น `EURUSDc`
 เพื่อแสดงเป็น `EURUSD` ทั้งสองฝั่งคำนวณ Timeframe
@@ -56,7 +56,7 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |---|---:|---|
-| `TOP_MARKETS` | 100 | จำนวนคู่ USDT อันดับสูงสุด (สูงสุด 100) |
+| `TOP_MARKETS` | 200 | จำนวนคู่ USDT อันดับสูงสุด (สูงสุด 200) |
 | `PINNED_SYMBOLS` | ว่าง | คู่ Binance ที่แสดงเพิ่มนอกเหนือจากอันดับ |
 | `FOREX_SYMBOLS` | 24 คู่หลัก | คู่ที่อ่านจาก Windsor MT5 |
 | `MT5_USE_MARKET_WATCH` | true | อ่านทุกคู่ที่แสดงใน Market Watch |

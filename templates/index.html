@@ -1,12 +1,449 @@
-<html>
-    <head>
-        <style>
-            body { text-align: center; font-family: comic sans ms; }
-        </style>
-    </head>
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fibo Retest Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b12;
+      --panel: #101722;
+      --line: #233044;
+      --muted: #8492a6;
+      --buy: #26a69a;
+      --sell: #ff6b57;
+      --retest: #f7c843;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% -20%, #17243a 0, var(--bg) 52%);
+      color: #eef3fa;
+      font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    main { width: min(1880px, calc(100% - 28px)); margin: 0 auto; padding: 36px 0; }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
+    h1 { font-size: clamp(23px, 3vw, 34px); margin: 0; letter-spacing: -.03em; }
+    nav { display: flex; gap: 7px; margin-top: 10px; }
+    nav a { color: #aebed2; text-decoration: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; }
+    nav a.active { color: white; background: #254d89; border-color: #3971c1; }
+    .subtitle, #updated { color: var(--muted); }
+    #updated { white-space: nowrap; font-size: 12px; }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(16, 23, 34, .93);
+      box-shadow: 0 24px 70px #0007;
+    }
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+    .market-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .panel-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 0 3px 8px; }
+    .panel-heading h2 { margin: 0; font-size: 16px; }
+    .panel-heading span { color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid var(--line); text-align: center; }
+    th { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+    th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: #101722; z-index: 1; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background-color: #152033; }
+    .symbol { font-weight: 750; font-size: 16px; }
+    .exchange { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .price { display: block; color: #a9b7c9; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .trading-hours { min-width: 118px; color: #d5deea; font-size: 11px; white-space: nowrap; }
+    .trading-hours small { display: block; color: var(--muted); font-size: 9px; }
+    .signal {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 64px;
+      min-height: 30px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: default;
+    }
+    .buy { color: #68e0d5; background: #26a69a24; border: 1px solid #26a69a70; }
+    .sell { color: #ff9485; background: #ff6b5720; border: 1px solid #ff6b576b; }
+    .retest { color: var(--retest); border-color: #f7c8437d; background: #f7c84317; }
+    .empty { color: #536176; }
+    .error { color: #ff9485; }
+    .trend { display: block; margin-top: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+    .trend-up { color: #68e0d5; }
+    .trend-down { color: #ff9485; }
+    .trend-sideway { color: #8fa0b6; }
+    .events-panel {
+      position: sticky;
+      top: 14px;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(16, 23, 34, .95);
+    }
+    .event-card { display: block; padding: 12px 2px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+    .event-card:last-child { border-bottom: 0; }
+    .event-card:hover .event-title { color: #7fc8ff; }
+    .event-meta { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 10px; }
+    .event-tag { padding: 2px 5px; border-radius: 4px; background: #24334a; color: #b9cbe2; }
+    .event-important { background: #ff6b5724; color: #ff9d90; }
+    .event-title { margin: 6px 0 4px; font-size: 12px; font-weight: 700; line-height: 1.45; }
+    .event-symbols { color: var(--retest); font-size: 10px; }
+    .event-original { color: var(--muted); font-size: 9px; line-height: 1.35; }
+    #events-status { color: var(--muted); font-size: 11px; }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .search {
+      width: min(320px, 100%);
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+      background: var(--panel);
+      color: #eef3fa;
+    }
+    .search:focus { border-color: #4f709d; }
+    .toggle { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: #bdc9d8; }
+    .toggle input { accent-color: var(--buy); }
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); margin-top: 15px; font-size: 12px; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+    #banner { display: none; padding: 12px; margin-bottom: 14px; border: 1px solid #ff6b5760; border-radius: 8px; color: #ffaaa0; }
+    @media (max-width: 640px) {
+      header { align-items: start; flex-direction: column; }
+      main { padding-top: 22px; }
+      .controls { align-items: stretch; flex-wrap: wrap; }
+      .search { width: 100%; }
+    }
+    @media (max-width: 900px) {
+      .content-grid { grid-template-columns: 1fr; }
+      .events-panel { position: static; max-height: none; }
+    }
+    @media (max-width: 1100px) { .market-columns { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Fibo Retest Monitor</h1>
+      <div class="subtitle">สัญญาณล่าสุด · โซน Fibonacci 0–23.6%</div>
+      <nav><a href="/" class="active">หน้า 1 · Fibo Retest</a><a href="/smc">หน้า 2 · SMCxSTO</a><a href="/confluence">หน้า 3 · จุดร่วม</a></nav>
+    </div>
+    <div id="updated">กำลังโหลดข้อมูล…</div>
+  </header>
+  <div id="banner"></div>
+  <div class="controls">
+    <input id="market-search" class="search" type="search" placeholder="ค้นหา เช่น BTC, ETH, XAU…" autocomplete="off">
+    <label class="toggle"><input id="active-only" type="checkbox" checked> เฉพาะคู่ที่มีสัญญาณ</label>
+  </div>
+  <div class="content-grid">
+  <div class="market-columns">
+    {% for provider, title, loading_text in [
+      ("crypto", "Crypto · Binance", "กำลังคำนวณ Top 200 Crypto…"),
+      ("forex", "Forex · Windsor MT5", "กำลังเชื่อมต่อ Windsor MT5…")
+    ] %}
+    <section class="market-panel">
+      <div class="panel-heading">
+        <h2>{{ title }}</h2>
+        <span id="{{ provider }}-count">กำลังโหลด…</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Market</th>
+              {% if provider == "forex" %}<th>เวลาเทรด (ไทย)</th>{% endif %}
+              {% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody id="{{ provider }}-markets">
+            <tr id="{{ provider }}-loading"><td colspan="{{ timeframes | length + (2 if provider == 'forex' else 1) }}">{{ loading_text }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <aside class="events-panel">
+    <div class="panel-heading">
+      <h2>ข่าวและ Events สำคัญ</h2>
+      <span id="events-count">altFINS</span>
+    </div>
+    <div id="events-status">กำลังโหลดและแปลเป็นไทย…</div>
+    <div id="events-list"></div>
+  </aside>
+  </div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--buy)"></i>ราคาอยู่ในโซน BUY/SELL</span>
+    <span><i class="dot" style="background:var(--retest)"></i>กลับเข้าโซนเดิม = RETEST</span>
+    <span>— ราคาอยู่นอกโซน</span>
+  </div>
+</main>
+<script>
+  const refreshMs = {{ refresh_seconds }} * 1000;
+  const loading = { crypto: false, forex: false, events: false };
 
-    <body>
-        <h1>Welcome to DogeBot. Let's make much wow money.</h1>
-        <img src="https://www.supercryptonews.com/wp-content/uploads/2020/07/doge.jpg" />
-    </body>
+  function number(value) {
+    if (value == null) return "—";
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: value < 10 ? 5 : 2 }).format(value);
+  }
+
+  function title(cell) {
+    if (cell.error) return cell.error;
+    if (cell.no_signal) return "ยังไม่พบสัญญาณที่ผ่านเงื่อนไข";
+    return [
+      `${cell.direction} · ${cell.reason}`,
+      `ราคา ${number(cell.price)}`,
+      `โซน ${number(cell.zone_low)} – ${number(cell.zone_high)}`,
+      `TP1 ${number(cell.tp1)} · TP2 ${number(cell.tp2)} · RR ${cell.rr?.toFixed(2)}`
+    ].join("\n");
+  }
+
+  function marketRow(provider, row, timeframes, rank) {
+    const body = document.querySelector(`#${provider}-markets`);
+    let element = [...body.querySelectorAll("tr[data-symbol]")]
+      .find(item => item.dataset.symbol === row.symbol);
+    if (element) {
+      element.dataset.rank = rank;
+      return element;
+    }
+    element = document.createElement("tr");
+    element.dataset.symbol = row.symbol;
+    element.dataset.search = `${row.display} ${row.symbol}`.toLowerCase();
+    element.dataset.rank = rank;
+
+    const market = document.createElement("td");
+    const name = document.createElement("span");
+    name.className = "symbol";
+    name.textContent = row.display;
+    const exchange = document.createElement("span");
+    exchange.className = "exchange";
+    exchange.textContent = row.symbol;
+    const price = document.createElement("span");
+    price.className = "price";
+    price.textContent = "—";
+    market.append(name, exchange, price);
+    element.appendChild(market);
+
+    if (provider === "forex") {
+      const session = document.createElement("td");
+      session.className = "trading-hours";
+      const primary = row.trading_hours?.primary;
+      const secondary = row.trading_hours?.secondary;
+      session.textContent = primary || "—";
+      if (secondary) {
+        const secondaryText = document.createElement("small");
+        secondaryText.textContent = `รอง ${secondary}`;
+        session.appendChild(secondaryText);
+      }
+      element.appendChild(session);
+    }
+
+    for (const timeframe of timeframes) {
+      const cell = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "signal empty";
+      badge.dataset.timeframe = timeframe;
+      badge.textContent = "…";
+      const trend = document.createElement("span");
+      trend.className = "trend trend-sideway";
+      trend.dataset.trendTimeframe = timeframe;
+      trend.textContent = "เทรนด์ …";
+      cell.append(badge, trend);
+      element.appendChild(cell);
+    }
+    body.appendChild(element);
+    return element;
+  }
+
+  function filterAndSortProvider(provider) {
+    const body = document.querySelector(`#${provider}-markets`);
+    const query = document.querySelector("#market-search").value.trim().toLowerCase();
+    const activeOnly = document.querySelector("#active-only").checked;
+    const rows = [...body.querySelectorAll("tr[data-symbol]")];
+    let visible = 0;
+    for (const row of rows) {
+      const activeCount = row.querySelectorAll(".buy, .sell, .retest").length;
+      row.dataset.activeCount = activeCount;
+      const matches = !query || row.dataset.search.includes(query);
+      const show = matches && (!activeOnly || activeCount > 0);
+      row.hidden = !show;
+      if (show) visible += 1;
+    }
+    rows.sort((a, b) =>
+      Number(b.dataset.activeCount) - Number(a.dataset.activeCount) ||
+      Number(a.dataset.rank) - Number(b.dataset.rank)
+    ).forEach(row => body.appendChild(row));
+    document.querySelector(`#${provider}-count`).textContent = `แสดง ${visible} / ${rows.length} คู่`;
+  }
+
+  function filterAndSort() {
+    filterAndSortProvider("crypto");
+    filterAndSortProvider("forex");
+  }
+
+  function updateProvider(provider, rows, timeframes, error = null) {
+    const body = document.querySelector(`#${provider}-markets`);
+    const loadingRow = document.querySelector(`#${provider}-loading`);
+    if (error && rows.length === 0) {
+      if (loadingRow) {
+        loadingRow.querySelector("td").textContent = error;
+        loadingRow.querySelector("td").className = "error";
+      }
+      document.querySelector(`#${provider}-count`).textContent = "ยังไม่เชื่อมต่อ";
+      return;
+    }
+    loadingRow?.remove();
+    const activeSymbols = new Set(rows.map(row => row.symbol));
+    body.querySelectorAll("tr[data-symbol]").forEach(element => {
+      if (!activeSymbols.has(element.dataset.symbol)) element.remove();
+    });
+    for (const [rank, row] of rows.entries()) {
+      const element = marketRow(provider, row, timeframes, rank);
+      element.querySelector(".price").textContent = number(row.price);
+      for (const [timeframe, cell] of Object.entries(row.timeframes)) {
+        const badge = element.querySelector(`[data-timeframe="${timeframe}"]`);
+        badge.textContent = cell.status;
+        badge.className = "signal " + (
+          cell.error ? "error" :
+          cell.is_retest ? "retest" :
+          cell.status === "BUY" ? "buy" :
+          cell.status === "SELL" ? "sell" : "empty"
+        );
+        badge.title = title(cell);
+        const trend = element.querySelector(`[data-trend-timeframe="${timeframe}"]`);
+        const trendName = cell.error ? "เทรนด์ —" :
+          cell.trend === "UP" ? "↑ ขึ้น" :
+          cell.trend === "DOWN" ? "↓ ลง" : "↔ Sideway";
+        trend.textContent = trendName;
+        trend.className = "trend " + (
+          cell.trend === "UP" ? "trend-up" :
+          cell.trend === "DOWN" ? "trend-down" : "trend-sideway"
+        );
+      }
+    }
+  }
+
+  async function updateProviderData(provider) {
+    if (loading[provider]) return;
+    loading[provider] = true;
+    const banner = document.querySelector("#banner");
+    try {
+      const response = await fetch(`/api/${provider}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "โหลดข้อมูลไม่สำเร็จ");
+      updateProvider(provider, data.rows || [], data.timeframes, data.error);
+      filterAndSort();
+      document.querySelector("#updated").textContent =
+        "อัปเดต " + new Date(data.updated_at).toLocaleTimeString("th-TH");
+      banner.style.display = "none";
+    } catch (error) {
+      updateProvider(provider, [], [], error.message);
+      if (provider === "crypto") {
+        banner.textContent = error.message;
+        banner.style.display = "block";
+      }
+    } finally {
+      loading[provider] = false;
+    }
+  }
+
+  function thaiDateTime(timestamp) {
+    return timestamp
+      ? new Intl.DateTimeFormat("th-TH", {
+          dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok"
+        }).format(new Date(timestamp))
+      : "—";
+  }
+
+  function renderEvents(items, error = null, updatedAt = null, nextRefreshAt = null) {
+    const list = document.querySelector("#events-list");
+    const status = document.querySelector("#events-status");
+    list.replaceChildren();
+    if (error) {
+      status.textContent = error;
+      status.className = "error";
+      document.querySelector("#events-count").textContent = "ยังไม่เชื่อมต่อ";
+      return;
+    }
+    status.className = "";
+    status.textContent = items.length
+      ? `อัปเดต ${thaiDateTime(updatedAt)} · รอบถัดไป ${thaiDateTime(nextRefreshAt)}`
+      : "ยังไม่มี Events ในช่วงนี้";
+    document.querySelector("#events-count").textContent = `${items.length} รายการ`;
+    for (const item of items) {
+      const card = document.createElement(item.url ? "a" : "div");
+      card.className = "event-card";
+      if (item.url) {
+        card.href = item.url;
+        card.target = "_blank";
+        card.rel = "noopener noreferrer";
+      }
+      const meta = document.createElement("div");
+      meta.className = "event-meta";
+      const tag = document.createElement("span");
+      tag.className = "event-tag" + (item.important ? " event-important" : "");
+      tag.textContent = item.important ? `สำคัญ · ${item.kind}` : item.kind;
+      const date = document.createElement("span");
+      date.textContent = item.timestamp ? thaiDateTime(item.timestamp) : "";
+      meta.append(tag, date);
+      const title = document.createElement("div");
+      title.className = "event-title";
+      title.textContent = item.title;
+      card.append(meta, title);
+      if (item.symbols) {
+        const symbols = document.createElement("div");
+        symbols.className = "event-symbols";
+        symbols.textContent = item.symbols;
+        card.appendChild(symbols);
+      }
+      if (item.original_title && item.original_title !== item.title) {
+        const original = document.createElement("div");
+        original.className = "event-original";
+        original.textContent = item.original_title;
+        card.appendChild(original);
+      }
+      list.appendChild(card);
+    }
+  }
+
+  async function updateEvents() {
+    if (loading.events) return;
+    loading.events = true;
+    try {
+      const response = await fetch("/api/events", { cache: "no-store" });
+      const data = await response.json();
+      renderEvents(
+        data.items || [],
+        data.error,
+        data.updated_at,
+        data.next_refresh_at
+      );
+    } catch (error) {
+      renderEvents([], error.message);
+    } finally {
+      loading.events = false;
+    }
+  }
+
+  function update() {
+    updateProviderData("crypto");
+    updateProviderData("forex");
+    updateEvents();
+  }
+
+  document.querySelector("#market-search").addEventListener("input", filterAndSort);
+  document.querySelector("#active-only").addEventListener("change", filterAndSort);
+  update();
+  setInterval(update, refreshMs);
+</script>
+</body>
 </html>

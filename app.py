@@ -435,7 +435,6 @@ def _matching_fibo_zones(signal, analysis_loader):
         if (
             setup is not None
             and setup.direction == signal.direction
-            and trend == required_trend
             and setup.zone_low <= signal.entry <= setup.zone_high
         ):
             matches.append(
@@ -443,6 +442,7 @@ def _matching_fibo_zones(signal, analysis_loader):
                     "timeframe": timeframe,
                     "fibo_direction": setup.direction,
                     "trend": trend,
+                    "trend_aligned": trend == required_trend,
                     "zone_low": setup.zone_low,
                     "zone_high": setup.zone_high,
                     "fibo_confirmed_at": setup.confirmed_at,
@@ -454,7 +454,9 @@ def _matching_fibo_zones(signal, analysis_loader):
 def _confluence_score(signal, matches):
     grade_points = 15 if signal.grade == "A" else 8
     timeframe_points = min(20, len(matches) * 5)
-    return min(100, 40 + 25 + grade_points + timeframe_points)
+    aligned = sum(1 for match in matches if match.get("trend_aligned"))
+    trend_points = round(25 * aligned / len(matches)) if matches else 0
+    return min(100, 40 + trend_points + grade_points + timeframe_points)
 
 
 def _entry_state(signal, price):

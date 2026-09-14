@@ -16,8 +16,9 @@ TradingView แอปคำนวณสัญญาณจากแท่งป�
 Binance และ Windsor MT5
 
 หน้า `/confluence` คัดกรองเฉพาะสัญญาณ SMCxSTO ที่มีราคา Entry อยู่ภายใน
-Fibo zone และมีทิศทาง Fibo/EMA trend ตรงกับ SMC รวม TF ที่ตรงกันไว้แถวเดียว
-ให้คะแนน Confluence 0–100 และแสดงตำแหน่งราคาปัจจุบันเทียบ Entry/TP/SL
+Fibo zone และมีทิศทาง Fibo ตรงกับ SMC ส่วน EMA trend ใช้เพิ่มคะแนนโดยไม่ตัด
+สัญญาณทิ้ง รวม TF ที่ตรงกันไว้แถวเดียว ให้คะแนน Confluence 0–100 และแสดง
+ตำแหน่งราคาปัจจุบันเทียบ Entry/TP/SL
 
 ## เริ่มใช้งาน
 

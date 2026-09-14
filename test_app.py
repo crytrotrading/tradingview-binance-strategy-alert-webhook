@@ -40,7 +40,7 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(app._smc_result(signal, 100)["status"], "—")
 
     @patch("app.time.time", return_value=100)
-    def test_confluence_requires_matching_direction_and_trend(self, _time):
+    def test_confluence_requires_direction_but_uses_trend_for_scoring(self, _time):
         signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
         analyses = {
             "1m": (
@@ -76,16 +76,22 @@ class ProviderApiTests(unittest.TestCase):
             signal, lambda timeframe: analyses.get(timeframe, (None, "SIDEWAY"))
         )
 
-        self.assertEqual([match["timeframe"] for match in matches], ["1m"])
+        self.assertEqual(
+            [match["timeframe"] for match in matches],
+            ["1m", "15m"],
+        )
         self.assertEqual(matches[0]["zone_low"], 99)
-        self.assertEqual(matches[0]["trend"], "UP")
+        self.assertTrue(matches[0]["trend_aligned"])
+        self.assertFalse(matches[1]["trend_aligned"])
 
     def test_confluence_score_rewards_grade_and_multiple_timeframes(self):
         grade_a = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
         grade_b = SmcSignal("BUY", 100, 110, 96, 2.5, "B", 99_000, 102, 98)
         self.assertGreater(
-            app._confluence_score(grade_a, [{}, {}]),
-            app._confluence_score(grade_b, [{}]),
+            app._confluence_score(
+                grade_a, [{"trend_aligned": True}, {"trend_aligned": True}]
+            ),
+            app._confluence_score(grade_b, [{"trend_aligned": False}]),
         )
 
     def test_entry_state_uses_current_price_without_claiming_history(self):

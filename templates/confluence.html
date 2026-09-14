@@ -38,6 +38,7 @@
     .timeframes { color:#9cc9ff; font-weight:800; }
     .trend-up { color:#68e0d5; font-weight:800; }
     .trend-down { color:#ff9485; font-weight:800; }
+    .trend-sideway { color:#8fa0b6; font-weight:800; }
     .score { color:var(--gold); font-size:14px; font-weight:900; }
     .error { color:#ff9485; }
     @media(max-width:1500px){th,td{padding:9px 3px;font-size:9px}.badge{min-width:40px;padding:4px 2px}}
@@ -50,7 +51,7 @@
   <header>
     <div>
       <h1>SMC × Fibo Confluence</h1>
-      <div class="subtitle">SMC + Fibo + Trend ทิศเดียวกัน · รวมหลาย TF · เรียงคะแนนสูงสุดก่อน</div>
+      <div class="subtitle">SMC + Fibo ทิศเดียวกัน · Trend ใช้ประกอบคะแนน · รวมหลาย TF</div>
       <nav>
         <a href="/">หน้า 1 · Fibo Retest</a>
         <a href="/smc">หน้า 2 · SMCxSTO</a>
@@ -95,7 +96,7 @@
     body.replaceChildren();
     if(!rows.length){
       const row=document.createElement("tr"),cell=document.createElement("td");
-      cell.colSpan=8;cell.textContent="ยังไม่พบสัญญาณที่ SMC, Fibo และ Trend ตรงกัน";row.appendChild(cell);body.appendChild(row);
+      cell.colSpan=8;cell.textContent="ยังไม่พบ SMC Entry ที่อยู่ใน Fibo zone ทิศเดียวกัน";row.appendChild(cell);body.appendChild(row);
     }
     rows.forEach(item=>{
       const row=document.createElement("tr");
@@ -113,7 +114,14 @@
       appendTextCell(row,number(item.entry),"price",`ตอนนี้ ${number(item.price)} · ${entryState(item.entry_state)}`);
       appendTextCell(row,(item.timeframes||[]).map(value=>value.toUpperCase()).join(" + "),"timeframes");
       appendTextCell(row,(item.matches||[]).map(match=>`${match.timeframe.toUpperCase()} ${number(match.zone_low)}–${number(match.zone_high)}`).join("\n"),"zone");
-      appendTextCell(row,item.status==="BUY"?"↑ ขึ้น":"↓ ลง",item.status==="BUY"?"trend-up":"trend-down");
+      const trendCell=document.createElement("td");
+      (item.matches||[]).forEach(match=>{
+        const trend=document.createElement("div");
+        trend.className=match.trend==="UP"?"trend-up":match.trend==="DOWN"?"trend-down":"trend-sideway";
+        trend.textContent=`${match.timeframe.toUpperCase()} ${match.trend==="UP"?"↑ ขึ้น":match.trend==="DOWN"?"↓ ลง":"↔ Sideway"}`;
+        trendCell.appendChild(trend);
+      });
+      row.appendChild(trendCell);
       appendTextCell(row,number(item.take_profit),"price",`SL ${number(item.stop_loss)}`);
       appendTextCell(row,String(item.score),"score");
       body.appendChild(row);

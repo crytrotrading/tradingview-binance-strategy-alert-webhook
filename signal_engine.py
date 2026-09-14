@@ -86,9 +86,10 @@ def classify_ema_trend(
     fast = latest_ema(fast_length)
     slow = latest_ema(slow_length)
     close = candles[-1].close
-    if fast > slow and close > slow:
+    tolerance = max(abs(slow) * 1e-9, 1e-12)
+    if fast > slow + tolerance and close > slow:
         return "UP"
-    if fast < slow and close < slow:
+    if fast < slow - tolerance and close < slow:
         return "DOWN"
     return "SIDEWAY"
 

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 from app import _rank_markets, _with_pinned_markets
-from signal_engine import RetestStore, Setup, tradingview_rsi
+from signal_engine import Candle, RetestStore, Setup, classify_ema_trend, tradingview_rsi
 
 
 def sample_setup(key_offset=0):
@@ -64,6 +64,20 @@ class RsiTests(unittest.TestCase):
         self.assertEqual(len(result), 30)
         self.assertIsNone(result[13])
         self.assertEqual(result[14], 100.0)
+
+
+class TrendTests(unittest.TestCase):
+    @staticmethod
+    def candles(closes):
+        return [
+            Candle(index, close + 1, close - 1, close, 100, close)
+            for index, close in enumerate(closes)
+        ]
+
+    def test_classifies_up_down_and_sideway_ema_trends(self):
+        self.assertEqual(classify_ema_trend(self.candles(range(1, 202))), "UP")
+        self.assertEqual(classify_ema_trend(self.candles(range(202, 0, -1))), "DOWN")
+        self.assertEqual(classify_ema_trend(self.candles([100] * 201)), "SIDEWAY")
 
 
 class MarketRankingTests(unittest.TestCase):

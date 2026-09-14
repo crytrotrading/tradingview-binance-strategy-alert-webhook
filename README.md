@@ -8,6 +8,7 @@ TradingView แอปคำนวณสัญญาณจากแท่งป�
 - กลับเข้าโซนเดิม: `BUY RETEST` หรือ `SELL RETEST`
 - เมื่อพบ setup ใหม่ สถานะ Retest ของคู่นั้นและ Timeframe นั้นจะเริ่มใหม่
 - ค้นหาคู่ได้ทันที และค่าเริ่มต้นแสดงเฉพาะคู่ที่มีสัญญาณโดยเรียงไว้ด้านบน
+- ใต้ทุกสัญญาณแสดงเทรนด์ `ขึ้น` / `ลง` / `Sideway` จาก EMA 50/200 ของแต่ละ TF
 
 หน้า `/smc` เป็น SMCxSTO V3.1 scanner ตาม preset `Trend 15m / Order Block
 5m / Stochastic 1m` โดยขยายขอบ OB ทั้งสองด้านด้วย Swing tolerance `0.5 × ATR`

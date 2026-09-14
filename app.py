@@ -11,7 +11,7 @@ import requests
 
 from altfins_provider import AltFinsFeed
 from mt5_provider import Mt5MarketData
-from signal_engine import Candle, RetestStore, calculate_setup
+from signal_engine import Candle, RetestStore, calculate_setup, classify_ema_trend
 from smc_engine import calculate_smc_signal
 from trading_sessions import sessions_for_symbol
 
@@ -158,16 +158,21 @@ def _closed_candles(symbol, timeframe):
     ]
 
 
-def _cached_setup(key, candle_loader):
+def _cached_analysis(key, candle_loader):
     now = time.monotonic()
     with cache_lock:
         cached = analysis_cache.get(key)
         if cached and now - cached[0] < CACHE_SECONDS:
             return cached[1]
-    setup = calculate_setup(candle_loader())
+    candles = candle_loader()
+    analysis = (calculate_setup(candles), classify_ema_trend(candles))
     with cache_lock:
-        analysis_cache[key] = (now, setup)
-    return setup
+        analysis_cache[key] = (now, analysis)
+    return analysis
+
+
+def _cached_setup(key, candle_loader):
+    return _cached_analysis(key, candle_loader)[0]
 
 
 def _setup_for(symbol, timeframe):
@@ -177,12 +182,27 @@ def _setup_for(symbol, timeframe):
     )
 
 
+def _analysis_for(symbol, timeframe):
+    return _cached_analysis(
+        ("binance", symbol, timeframe),
+        lambda: _closed_candles(symbol, timeframe),
+    )
+
+
 def _cell(symbol, timeframe, price):
     try:
-        setup = _setup_for(symbol, timeframe)
+        setup, trend = _analysis_for(symbol, timeframe)
         if setup is None:
-            return {"status": "—", "price": price, "error": None, "no_signal": True}
-        return store.evaluate(symbol, timeframe, setup, price)
+            return {
+                "status": "—",
+                "trend": trend,
+                "price": price,
+                "error": None,
+                "no_signal": True,
+            }
+        result = store.evaluate(symbol, timeframe, setup, price)
+        result["trend"] = trend
+        return result
     except Exception as exc:
         app.logger.warning("Failed %s %s: %s", symbol, timeframe, exc)
         return {"status": "!", "price": price, "error": str(exc)}
@@ -190,13 +210,21 @@ def _cell(symbol, timeframe, price):
 
 def _mt5_cell(symbol, timeframe, price):
     try:
-        setup = _cached_setup(
+        setup, trend = _cached_analysis(
             ("mt5", symbol, timeframe),
             lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
         )
         if setup is None:
-            return {"status": "—", "price": price, "error": None, "no_signal": True}
-        return store.evaluate(f"MT5:{symbol}", timeframe, setup, price)
+            return {
+                "status": "—",
+                "trend": trend,
+                "price": price,
+                "error": None,
+                "no_signal": True,
+            }
+        result = store.evaluate(f"MT5:{symbol}", timeframe, setup, price)
+        result["trend"] = trend
+        return result
     except Exception as exc:
         app.logger.warning("MT5 failed %s %s: %s", symbol, timeframe, exc)
         return {"status": "!", "price": price, "error": str(exc)}

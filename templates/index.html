@@ -71,6 +71,10 @@
     .retest { color: var(--retest); border-color: #f7c8437d; background: #f7c84317; }
     .empty { color: #536176; }
     .error { color: #ff9485; }
+    .trend { display: block; margin-top: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+    .trend-up { color: #68e0d5; }
+    .trend-down { color: #ff9485; }
+    .trend-sideway { color: #8fa0b6; }
     .events-panel {
       position: sticky;
       top: 14px;
@@ -249,7 +253,11 @@
       badge.className = "signal empty";
       badge.dataset.timeframe = timeframe;
       badge.textContent = "…";
-      cell.appendChild(badge);
+      const trend = document.createElement("span");
+      trend.className = "trend trend-sideway";
+      trend.dataset.trendTimeframe = timeframe;
+      trend.textContent = "เทรนด์ …";
+      cell.append(badge, trend);
       element.appendChild(cell);
     }
     body.appendChild(element);
@@ -311,6 +319,15 @@
           cell.status === "SELL" ? "sell" : "empty"
         );
         badge.title = title(cell);
+        const trend = element.querySelector(`[data-trend-timeframe="${timeframe}"]`);
+        const trendName = cell.error ? "เทรนด์ —" :
+          cell.trend === "UP" ? "↑ ขึ้น" :
+          cell.trend === "DOWN" ? "↓ ลง" : "↔ Sideway";
+        trend.textContent = trendName;
+        trend.className = "trend " + (
+          cell.trend === "UP" ? "trend-up" :
+          cell.trend === "DOWN" ? "trend-down" : "trend-sideway"
+        );
       }
     }
   }

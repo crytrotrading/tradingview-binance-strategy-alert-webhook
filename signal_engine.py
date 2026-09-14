@@ -67,6 +67,32 @@ class EngineConfig:
     use_volume_profile: bool = True
 
 
+def classify_ema_trend(
+    candles: list[Candle], fast_length: int = 50, slow_length: int = 200
+) -> str:
+    """Classify the latest closed candle using the SMC EMA trend rules."""
+    if len(candles) < slow_length:
+        return "SIDEWAY"
+
+    closes = [candle.close for candle in candles]
+
+    def latest_ema(length: int) -> float:
+        value = sum(closes[:length]) / length
+        alpha = 2.0 / (length + 1)
+        for close in closes[length:]:
+            value = alpha * close + (1.0 - alpha) * value
+        return value
+
+    fast = latest_ema(fast_length)
+    slow = latest_ema(slow_length)
+    close = candles[-1].close
+    if fast > slow and close > slow:
+        return "UP"
+    if fast < slow and close < slow:
+        return "DOWN"
+    return "SIDEWAY"
+
+
 def tradingview_rsi(closes: Iterable[float], length: int) -> list[float | None]:
     """Wilder RSI, equivalent to TradingView ta.rsi for normal price series."""
     values = list(closes)

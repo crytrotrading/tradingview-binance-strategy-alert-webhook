@@ -68,6 +68,12 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rows"][0]["symbol"], "BTCUSDT")
 
+    @patch("app._analysis_for", return_value=(None, "UP"))
+    def test_market_cell_includes_timeframe_trend_without_signal(self, _analysis):
+        result = app._cell("BTCUSDT", "1h", 100)
+        self.assertEqual(result["status"], "—")
+        self.assertEqual(result["trend"], "UP")
+
 
 if __name__ == "__main__":
     unittest.main()

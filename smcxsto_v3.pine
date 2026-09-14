@@ -1,0 +1,676 @@
+//@version=6
+indicator("SMCxSTO V3.0", shorttitle="SMCxSTO V3.0", overlay=true, max_boxes_count=100, max_lines_count=300, max_labels_count=300)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Inputs
+//──────────────────────────────────────────────────────────────────────────────
+string G_TF = "◉ TIMEFRAME"
+string trendTf = input.timeframe("15", "TF เทรนด์ (EMA + ATR)", group=G_TF)
+string obTf = input.timeframe("5", "TF หา OB", group=G_TF)
+string stoTf = input.timeframe("1", "TF ของ Stochastic", group=G_TF)
+bool allowLowerSto = input.bool(true, "ยอมให้ STO ใช้ TF ต่ำกว่าชาร์ต", group=G_TF,
+ tooltip="เปิดไว้ตามภาพ แต่เพื่อไม่ให้พลาด intrabar แนะนำให้เปิดกราฟที่ TF เดียวกับ STO")
+
+string G_EMA = "◉ ตัวกรองเทรนด์ (EMA)"
+bool useTrend = input.bool(true, "เปิดตัวกรองเทรนด์", group=G_EMA)
+int slowLen = input.int(200, "ความยาว EMA ช้า", minval=2, group=G_EMA)
+int fastLen = input.int(50, "ความยาว EMA เร็ว", minval=1, group=G_EMA)
+bool confirmedTrend = input.bool(true, "ใช้เฉพาะแท่งที่ปิดแล้ว (กัน repaint)", group=G_EMA)
+bool showSlow = input.bool(true, "วาดเส้น EMA ช้า", inline="slow", group=G_EMA)
+color slowColor = input.color(color.black, "", inline="slow", group=G_EMA)
+bool showFast = input.bool(true, "วาดเส้น EMA เร็ว", inline="fast", group=G_EMA)
+color fastColor = input.color(color.gray, "", inline="fast", group=G_EMA)
+
+string G_ATR = "◉ ตัวกรองระยะยืด (ATR)"
+bool useAtr = input.bool(true, "เปิดตัวกรอง ATR", group=G_ATR)
+int atrLen = input.int(14, "ATR Period", minval=1, group=G_ATR)
+float maxAtrDistance = input.float(2.5, "ระยะห่างสูงสุด ราคา-EMA เร็ว (x ATR)", minval=0, step=0.1, group=G_ATR,
+ tooltip="ตามภาพ = 2.5; หลักสูตรชุด M15/M5/M1 ใช้ 3.0 และชุด H1/M15/M5 ใช้ 2.0")
+string atrDirection = input.string("เฉพาะฝั่งเทรนด์", "กรองทิศทางไหน",
+ options=["เฉพาะฝั่งเทรนด์", "ทั้งสองฝั่ง"], group=G_ATR)
+
+string G_OB = "◉ การหา OB"
+bool criterion1On = input.bool(true, "เกณฑ์ 1: แท่งสีตรงข้ามตัวสุดท้ายที่ส่งราคาไปสีเดียวกันติดต่อกัน", group=G_OB)
+int runBars = input.int(2, ">=", minval=2, maxval=10, inline="run", group=G_OB)
+bool criterion2On = input.bool(true, "เกณฑ์ 2: แท่งที่ติดกับ Imbalance (FVG)", group=G_OB)
+float minFvgAtr = input.float(0.15, "ขนาด FVG ขั้นต่ำ (x ATR, 0=ไม่กรอง)", minval=0, step=0.05, group=G_OB)
+float fvgTolerance = input.float(0.1, "FVG tolerance (x ATR)", minval=0, step=0.05, group=G_OB)
+float swingTolerance = input.float(0.1, "Swing tolerance (x ATR)", minval=0, step=0.05, group=G_OB)
+bool includeFvg = input.bool(true, "ขยายกรอบโซนให้คลุม FVG ด้วย (ถ้าเข้าเกณฑ์ 2)", group=G_OB)
+bool breakerOn = input.bool(false, "เปิด Breaker Block (BB) — แปลง OB ที่ถูกทะลุเป็นโซนทิศตรงข้าม", group=G_OB)
+bool breakerFvgOnly = input.bool(true, "BB ต้องมาจาก OB ที่มี FVG (เกณฑ์ 2) เท่านั้น", group=G_OB)
+bool requireSwing = input.bool(true, "เกณฑ์ 3: แท่ง OB ต้องเป็น Swing High/Low", group=G_OB)
+int swingL = input.int(5, "L", minval=1, maxval=20, inline="swing", group=G_OB)
+int swingR = input.int(5, "R", minval=2, maxval=20, inline="swing", group=G_OB)
+bool requireImpulse = input.bool(false, "เกณฑ์ 4: บังคับต้องมีบาร์แรงตามหลัง (ใช้ค่า x ATR จากด้านล่าง)", group=G_OB)
+int obLookback = input.int(20, "ย้อนหาแท่ง OB ไม่เกินกี่แท่ง", minval=2, maxval=100, group=G_OB)
+bool tagRange = input.bool(true, "แท็กเสริม: ช่วงแรงกว่าปกติ ≥ x ATR", inline="range", group=G_OB)
+float impulseAtr = input.float(1.0, "", minval=0.1, step=0.1, inline="range", group=G_OB)
+bool tagVolume = input.bool(true, "แท็กเสริม: Volume แท่ง OB สูงกว่าค่าเฉลี่ย SMA", inline="volume", group=G_OB)
+int volumeLen = input.int(20, "", minval=1, inline="volume", group=G_OB)
+float volumeFactor = input.float(1.2, "X เฉลี่ย", minval=0, step=0.1, group=G_OB)
+
+string G_SIZE = "◉ ขนาดโซนขั้นต่ำ"
+float minZoneAtr = input.float(0.5, "ความสูงกรอบโซนขั้นต่ำ (x ATR, 0=ปิด)", minval=0, step=0.1, group=G_SIZE)
+string smallZoneAction = input.string("ตัดทิ้ง", "ถ้ากรอบเล็กกว่าขั้นต่ำ", options=["ตัดทิ้ง", "ขยายให้ถึงขั้นต่ำ"], group=G_SIZE)
+float minZoneSpacing = input.float(0.8, "ห้ามโซนซ้อน: ระยะห่างขั้นต่ำ (x ATR, 0=ปิด)", minval=0, step=0.1, group=G_SIZE)
+
+string G_STO = "◉ STOCHASTIC TRIGGER"
+bool requireSto = input.bool(true, "ต้องรอ STO ยืนยันก่อนยิงสัญญาณ", group=G_STO)
+bool realtimeSto = input.bool(false, "STO ค่าเรียลไทม์ (ไม่รอแท่ง STO ปิด)", group=G_STO)
+int kLen = input.int(5, "%K Length", minval=1, inline="sto", group=G_STO)
+int kSmooth = input.int(3, "Smooth %K", minval=1, inline="sto", group=G_STO)
+int dLen = input.int(3, "%D", minval=1, inline="sto", group=G_STO)
+float oversold = input.float(30, "ขายมากเกินไป", minval=0, maxval=50, inline="levels", group=G_STO)
+float overbought = input.float(70, "ซื้อมากเกินไป", minval=50, maxval=100, inline="levels", group=G_STO,
+ tooltip="ตามภาพ = 30/70; ค่ามาตรฐานหลักสูตร = 20/80")
+string triggerMode = input.string("ทั้งสองอย่าง (เข้มสุด)", "เงื่อนไข trigger",
+ options=["K ตัด D", "K ออกจากโซน OS/OB", "ทั้งสองอย่าง (เข้มสุด)"], group=G_STO)
+string armedMode = input.string("ตลอดเวลาที่อยู่ในโซน", "นับว่า armed เมื่อไหร่",
+ options=["ตลอดเวลาที่อยู่ในโซน", "เมื่อ STO เข้าเขต"], group=G_STO)
+int armedAfterExit = input.int(12, "หลังออกจากโซนแล้ว ยัง armed ต่อได้กี่แท่ง", minval=0, group=G_STO)
+int signalCooldown = input.int(15, "เว้นระยะขั้นต่ำระหว่างสัญญาณ (แท่ง)", minval=0, group=G_STO)
+bool signalMustBeInZone = input.bool(true, "ตอน STO ยืนยัน ราคาต้องยังอยู่ในโซน", group=G_STO)
+float signalZoneTolerance = input.float(1.0, "ระยะผ่อนผันจากขอบโซน (x ATR ของ TF หา OB, 0=เข้มสุด)", minval=0, step=0.1, group=G_STO)
+
+string G_LINES = "◉ เส้น ENTRY / TP / SL"
+bool showTradeLines = input.bool(true, "แสดงเส้น Entry/TP/SL เมื่อเกิดสัญญาณ", group=G_LINES)
+float slBufferAtr = input.float(0.3, "SL buffer จากขอบโซน (x ATR ของ TF หา OB)", minval=0, step=0.1, group=G_LINES)
+float rr = input.float(2.5, "อัตราส่วน RR (คำนวณเส้น TP)", minval=0.1, step=0.1, group=G_LINES)
+int tradeLineLength = input.int(25, "ความยาวเส้นไปทางขวา (แท่ง)", minval=1, maxval=500, group=G_LINES)
+bool showPriceLabels = input.bool(true, "แสดงป้ายราคาที่ปลายเส้น", group=G_LINES)
+color entryColor = input.color(color.rgb(39, 91, 230), "Entry", inline="linecolors", group=G_LINES)
+color tpColor = input.color(color.rgb(70, 170, 80), "TP", inline="linecolors", group=G_LINES)
+color slColor = input.color(color.rgb(240, 45, 70), "SL", inline="linecolors", group=G_LINES)
+string priceLabelSize = input.string("เล็ก", "ขนาดป้ายราคา", options=["จิ๋ว", "เล็ก", "ปกติ"], group=G_LINES)
+string priceLabelPosition = input.string("ปลายเส้น", "ตำแหน่งป้าย", options=["ปลายเส้น", "ต้นเส้น"], group=G_LINES)
+string priceLabelStyle = input.string("มีกรอบสี", "รูปแบบป้าย", options=["มีกรอบสี", "ข้อความล้วน"], group=G_LINES)
+string priceLabelText = input.string("ชื่อ + ราคา", "ข้อความบนป้าย", options=["ชื่อ + ราคา", "ชื่อเท่านั้น", "ราคาเท่านั้น"], group=G_LINES)
+color priceLabelTextColor = input.color(color.white, "สีตัวอักษรป้าย (เฉพาะแบบมีกรอบ)", group=G_LINES)
+bool showTradeFill = input.bool(true, "แสดงพื้นที่ระหว่างเส้น Entry↔TP/SL", group=G_LINES)
+color lossFill = input.color(color.new(color.red, 82), "สีพื้น Entry↔SL", inline="fills", group=G_LINES)
+color profitFill = input.color(color.new(color.green, 82), "สีพื้น Entry↔TP", inline="fills", group=G_LINES)
+int cleanupTradeAfter = input.int(50, "ลบเส้น TP/SL หลังราคาแตะเป้า/SL แล้วกี่แท่ง (0=ไม่ลบ)", minval=0, group=G_LINES)
+
+string G_BEHAVIOR = "◉ พฤติกรรมโซน"
+string zoneSource = input.string("เต็มแท่ง (ไส้ถึงไส้)", "ตีกรอบจาก",
+ options=["เต็มแท่ง (ไส้ถึงไส้)", "เนื้อเทียน"], group=G_BEHAVIOR)
+string touchMode = input.string("ไส้เทียนแตะ", "นับว่าเข้าโซนเมื่อ", options=["ไส้เทียนแตะ", "ราคาปิดในโซน"], group=G_BEHAVIOR)
+string breakMode = input.string("ราคาปิดทะลุ", "นับว่าทะลุโซนเมื่อ", options=["ราคาปิดทะลุ", "ไส้เทียนทะลุ"], group=G_BEHAVIOR)
+int touchDelay = input.int(1, "เริ่มนับการเข้าโซนหลังผ่านไปกี่แท่ง", minval=0, group=G_BEHAVIOR)
+int retouchCooldown = input.int(20, "เว้นระยะขั้นต่ำระหว่างการเข้าโซนซ้ำ (แท่ง)", minval=0, group=G_BEHAVIOR)
+int deleteIfStuck = input.int(100, "ลบโซนถ้าราคาแช่ในโซนติดต่อกันเกิน (แท่ง, 0=ปิด)", minval=0, group=G_BEHAVIOR)
+int blockIfStuck = input.int(100, "บล็อกโซนถ้าราคาแช่ในโซนเกิน (แท่ง, 0=ปิด)", minval=0, group=G_BEHAVIOR)
+int expireObBars = input.int(194, "ลบโซนหลังเกิดมากี่แท่ง (TF ของ OB, 0=ไม่ลบ)", minval=0, group=G_BEHAVIOR)
+int extendZoneBars = input.int(20, "ลากกรอบล้ำไปทางขวา (แท่ง)", minval=0, group=G_BEHAVIOR)
+int keepPerSide = input.int(6, "เก็บโซนล่าสุดฝั่งละกี่โซน", minval=1, maxval=20, group=G_BEHAVIOR)
+int keepSignalLabels = input.int(3, "เก็บลูกศรสัญญาณล่าสุดกี่อัน", minval=0, maxval=50, group=G_BEHAVIOR)
+int nearestZones = input.int(3, "โชว์แค่ N โซนที่ใกล้ราคาสุดต่อฝั่ง (0=โชว์หมด)", minval=0, maxval=20, group=G_BEHAVIOR)
+bool showBullZones = input.bool(true, "แสดงโซน Bullish (Demand)", inline="zones", group=G_BEHAVIOR)
+bool showBearZones = input.bool(true, "แสดงโซน Bearish (Supply)", inline="zones", group=G_BEHAVIOR)
+bool showGrades = input.bool(false, "แสดงป้ายเกรด A/B บนกล่อง", group=G_BEHAVIOR)
+bool showGradeA = input.bool(true, "แสดงเกรด A (เข้าทั้ง 2 เกณฑ์)", inline="grades", group=G_BEHAVIOR)
+bool showGradeB = input.bool(true, "แสดงเกรด B (เข้าเกณฑ์เดียว)", inline="grades", group=G_BEHAVIOR)
+
+string G_COLORS = "◉ สี"
+color bullFill = input.color(color.new(color.teal, 82), "พื้น Bullish", inline="bull", group=G_COLORS)
+color bullBorder = input.color(color.teal, "ขอบ", inline="bull", group=G_COLORS)
+color bearFill = input.color(color.new(color.red, 84), "พื้น Bearish", inline="bear", group=G_COLORS)
+color bearBorder = input.color(color.red, "ขอบ", inline="bear", group=G_COLORS)
+color bullBbFill = input.color(color.new(color.blue, 82), "พื้น Bull BB", inline="bullbb", group=G_COLORS)
+color bullBbBorder = input.color(color.blue, "ขอบ", inline="bullbb", group=G_COLORS)
+color bearBbFill = input.color(color.new(color.orange, 82), "พื้น Bear BB", inline="bearbb", group=G_COLORS)
+color bearBbBorder = input.color(color.orange, "ขอบ", inline="bearbb", group=G_COLORS)
+
+string G_TABLE = "◉ ตาราง CHECKLIST"
+bool showChecklist = input.bool(true, "แสดงตาราง checklist", group=G_TABLE)
+string tablePosition = input.string("ล่างขวา", "ตำแหน่งตาราง",
+ options=["บนซ้าย", "บนขวา", "ล่างซ้าย", "ล่างขวา"], group=G_TABLE)
+string tableTextSize = input.string("เล็ก", "ขนาดตัวอักษร", options=["จิ๋ว", "เล็ก", "ปกติ"], group=G_TABLE)
+bool showDebug = input.bool(false, "แถว DEBUG (ดูว่ารอคอนดิชันไหนบ้าง)", group=G_TABLE)
+bool compactTable = input.bool(false, "โหมดย่อ (โชว์แค่หัวตารางกับ SIGNAL)", group=G_TABLE)
+int tableTransparency = input.int(0, "ความโปร่งใสพื้นตาราง (0 = ใช้สีที่ตั้งเอง)", minval=0, maxval=100, group=G_TABLE)
+int tableVOffset = input.int(0, "เลื่อนตารางตามแนวตั้ง (แถวว่าง)", minval=0, maxval=10, group=G_TABLE)
+int tableHOffset = input.int(0, "แนวนอน (คอลัมน์ว่าง)", minval=0, maxval=10, group=G_TABLE)
+int tableFrameWidth = input.int(1, "ความหนาเส้นกรอบ", minval=0, maxval=5, inline="borders", group=G_TABLE)
+int tableBorderWidth = input.int(1, "เส้นแบ่งช่อง", minval=0, maxval=5, inline="borders", group=G_TABLE)
+color tableHeaderColor = input.color(color.rgb(70, 73, 80), "สีพื้นหัวตาราง", inline="tablec1", group=G_TABLE)
+color tableTextColor = input.color(color.white, "ตัวอักษร", inline="tablec1", group=G_TABLE)
+color passColor = input.color(color.rgb(48, 165, 75), "สีพื้นผ่าน (✓)", inline="tablec2", group=G_TABLE)
+color failColor = input.color(color.rgb(239, 45, 66), "สีพื้นไม่ผ่าน (X)", inline="tablec2", group=G_TABLE)
+color tableTitleColor = input.color(color.rgb(20, 23, 29), "สีพื้นช่องชื่อ", inline="tablec3", group=G_TABLE)
+color tableSummaryColor = input.color(color.rgb(37, 84, 190), "สีพื้นแถวสรุป", inline="tablec3", group=G_TABLE)
+color tableBorderColor = input.color(color.rgb(105, 110, 121), "สีเส้นกรอบ", group=G_TABLE)
+
+string G_ALERT = "◉ แจ้งเตือน"
+string alertTiming = input.string("รอแท่งปิด", "จังหวะที่ยิงแจ้งเตือน", options=["รอแท่งปิด", "ทันที"], group=G_ALERT)
+bool showSignalArrows = input.bool(true, "แสดงลูกศรสัญญาณ BUY/SELL บนกราฟ", group=G_ALERT)
+bool showSignalText = input.bool(true, "แสดงข้อความบนลูกศร", group=G_ALERT)
+bool showTfWarning = input.bool(false, "แสดงป้ายเตือนเรื่อง Timeframe", group=G_ALERT)
+
+//──────────────────────────────────────────────────────────────────────────────
+// MTF trend data
+//──────────────────────────────────────────────────────────────────────────────
+f_trendData() =>
+    float fast = ta.ema(close, fastLen)
+    float slow = ta.ema(close, slowLen)
+    float atr = ta.atr(atrLen)
+    [confirmedTrend ? close[1] : close, confirmedTrend ? fast[1] : fast,
+     confirmedTrend ? slow[1] : slow, confirmedTrend ? atr[1] : atr]
+
+[trendClose, emaFast, emaSlow, trendAtr] = request.security(syminfo.tickerid, trendTf, f_trendData(),
+ gaps=barmerge.gaps_off, lookahead=confirmedTrend ? barmerge.lookahead_on : barmerge.lookahead_off)
+
+bool bullTrend = emaFast > emaSlow and trendClose > emaSlow
+bool bearTrend = emaFast < emaSlow and trendClose < emaSlow
+bool trendPass = not useTrend or bullTrend or bearTrend
+float trendDistance = math.abs(trendClose - emaFast)
+bool atrPass = not useAtr or trendDistance <= trendAtr * maxAtrDistance
+
+// The trend filter keeps using the selected higher timeframe. The visible
+// curves use the chart timeframe, matching TradingView's smooth EMA display.
+float visualEmaSlow = ta.ema(close, slowLen)
+float visualEmaFast = ta.ema(close, fastLen)
+plot(showSlow ? visualEmaSlow : na, "EMA ช้า", color=slowColor, linewidth=1)
+plot(showFast ? visualEmaFast : na, "EMA เร็ว", color=fastColor, linewidth=1)
+
+//──────────────────────────────────────────────────────────────────────────────
+// OB/FVG candidates are confirmed on the selected OB timeframe.
+// With Swing enabled, the pivot is necessarily confirmed swingR bars later.
+//──────────────────────────────────────────────────────────────────────────────
+f_obCandidates() =>
+    float a = ta.atr(atrLen)
+    int off = requireSwing ? swingR : runBars
+    bool enough = off >= math.max(2, runBars) and off <= obLookback and bar_index > off + swingL + 2
+    bool bullRun = enough
+    bool bearRun = enough
+    if enough
+        for j = 1 to runBars
+            bullRun := bullRun and off - j >= 0 and close[off - j] > open[off - j]
+            bearRun := bearRun and off - j >= 0 and close[off - j] < open[off - j]
+    bool bullOpposite = enough and close[off] < open[off]
+    bool bearOpposite = enough and close[off] > open[off]
+    float bullGap = enough ? low[off - 2] - high[off] : na
+    float bearGap = enough ? low[off] - high[off - 2] : na
+    bool bullFvg = enough and bullGap + fvgTolerance * a[off] > 0 and bullGap >= minFvgAtr * a[off]
+    bool bearFvg = enough and bearGap + fvgTolerance * a[off] > 0 and bearGap >= minFvgAtr * a[off]
+    bool bullC1 = bullOpposite and bullRun
+    bool bearC1 = bearOpposite and bearRun
+    bool bullC2 = bullOpposite and bullFvg
+    bool bearC2 = bearOpposite and bearFvg
+    bool bullPivot = not requireSwing or not na(ta.pivotlow(low, swingL, swingR))
+    bool bearPivot = not requireSwing or not na(ta.pivothigh(high, swingL, swingR))
+    float bullImpulseRange = enough ? high[off - 1] - low[off - 1] : 0.0
+    float bearImpulseRange = enough ? high[off - 1] - low[off - 1] : 0.0
+    bool bullImpulse = bullImpulseRange >= impulseAtr * a[off - 1]
+    bool bearImpulse = bearImpulseRange >= impulseAtr * a[off - 1]
+    bool bullBase = ((criterion1On and bullC1) or (criterion2On and bullC2)) and bullPivot
+    bool bearBase = ((criterion1On and bearC1) or (criterion2On and bearC2)) and bearPivot
+    bool bullValid = bullBase and (not requireImpulse or bullImpulse)
+    bool bearValid = bearBase and (not requireImpulse or bearImpulse)
+    float bodyTop = math.max(open[off], close[off])
+    float bodyBottom = math.min(open[off], close[off])
+    float rawTop = zoneSource == "เต็มแท่ง (ไส้ถึงไส้)" ? high[off] : bodyTop
+    float rawBottom = zoneSource == "เต็มแท่ง (ไส้ถึงไส้)" ? low[off] : bodyBottom
+    float bullTop = includeFvg and bullC2 ? math.max(rawTop, low[off - 2]) : rawTop
+    float bullBottom = rawBottom
+    float bearTop = rawTop
+    float bearBottom = includeFvg and bearC2 ? math.min(rawBottom, high[off - 2]) : rawBottom
+    bool rangeStrong = enough and bullImpulseRange >= impulseAtr * a[off]
+    bool volumeStrong = enough and volume[off] >= ta.sma(volume, volumeLen)[off] * volumeFactor
+    string bullGrade = bullC1 and bullC2 ? "A" : "B"
+    string bearGrade = bearC1 and bearC2 ? "A" : "B"
+    [time, bullValid, bearValid, time[off], bullTop, bullBottom, bearTop, bearBottom, a[off],
+     bullGrade, bearGrade, bullC2, bearC2, rangeStrong, volumeStrong]
+
+[obBarTime, newBullCandidate, newBearCandidate, candidateTime, candidateBullTop, candidateBullBottom,
+ candidateBearTop, candidateBearBottom, candidateAtr, candidateBullGrade, candidateBearGrade,
+ candidateBullFvg, candidateBearFvg, candidateRangeStrong, candidateVolumeStrong] =
+ request.security(syminfo.tickerid, obTf, f_obCandidates(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+bool newObTfBar = ta.change(obBarTime) != 0
+
+//──────────────────────────────────────────────────────────────────────────────
+// Zone storage and lifecycle
+//──────────────────────────────────────────────────────────────────────────────
+var array<box> zoneBoxes = array.new_box()
+var array<float> zoneTops = array.new_float()
+var array<float> zoneBottoms = array.new_float()
+var array<float> zoneAtrs = array.new_float()
+var array<bool> zoneBulls = array.new_bool()
+var array<bool> zoneFvgs = array.new_bool()
+var array<bool> zoneBreakers = array.new_bool()
+var array<bool> zoneArmed = array.new_bool()
+var array<bool> zoneSawExtreme = array.new_bool()
+var array<bool> zoneSawCross = array.new_bool()
+var array<bool> zoneBlocked = array.new_bool()
+var array<int> zoneAges = array.new_int()
+var array<int> zoneCreatedBars = array.new_int()
+var array<int> zoneLastTouches = array.new_int()
+var array<int> zoneExitBars = array.new_int()
+var array<int> zoneInsideCounts = array.new_int()
+var array<string> zoneGrades = array.new_string()
+
+f_deleteZone(int idx) =>
+    box.delete(array.get(zoneBoxes, idx))
+    array.remove(zoneBoxes, idx)
+    array.remove(zoneTops, idx)
+    array.remove(zoneBottoms, idx)
+    array.remove(zoneAtrs, idx)
+    array.remove(zoneBulls, idx)
+    array.remove(zoneFvgs, idx)
+    array.remove(zoneBreakers, idx)
+    array.remove(zoneArmed, idx)
+    array.remove(zoneSawExtreme, idx)
+    array.remove(zoneSawCross, idx)
+    array.remove(zoneBlocked, idx)
+    array.remove(zoneAges, idx)
+    array.remove(zoneCreatedBars, idx)
+    array.remove(zoneLastTouches, idx)
+    array.remove(zoneExitBars, idx)
+    array.remove(zoneInsideCounts, idx)
+    array.remove(zoneGrades, idx)
+
+f_zoneTooClose(float top, float bottom, bool bull, float a) =>
+    bool tooClose = false
+    if array.size(zoneBoxes) > 0 and minZoneSpacing > 0
+        float center = (top + bottom) / 2
+        for i = 0 to array.size(zoneBoxes) - 1
+            if array.get(zoneBulls, i) == bull
+                float oldCenter = (array.get(zoneTops, i) + array.get(zoneBottoms, i)) / 2
+                tooClose := tooClose or math.abs(center - oldCenter) < minZoneSpacing * a
+    tooClose
+
+f_addZone(bool bull, float inTop, float inBottom, float a, int leftTime, string grade, bool hasFvg, bool isBreaker) =>
+    // Keep the signal rules unchanged, but pad both zone edges by the
+    // configured Swing tolerance so near-edge reactions remain in the POI.
+    float zonePadding = swingTolerance * a
+    float top = inTop + zonePadding
+    float bottom = inBottom - zonePadding
+    float minHeight = minZoneAtr * a
+    bool tooSmall = minZoneAtr > 0 and top - bottom < minHeight
+    if tooSmall and smallZoneAction == "ขยายให้ถึงขั้นต่ำ"
+        float center = (top + bottom) / 2
+        top := center + minHeight / 2
+        bottom := center - minHeight / 2
+    bool accepted = not (tooSmall and smallZoneAction == "ตัดทิ้ง") and not f_zoneTooClose(top, bottom, bull, a)
+    bool gradeVisible = grade == "A" ? showGradeA : showGradeB
+    if accepted and gradeVisible
+        color border = isBreaker ? (bull ? bullBbBorder : bearBbBorder) : (bull ? bullBorder : bearBorder)
+        color fill = isBreaker ? (bull ? bullBbFill : bearBbFill) : (bull ? bullFill : bearFill)
+        bool visible = bull ? showBullZones : showBearZones
+        int futureMs = int(timeframe.in_seconds() * 1000 * extendZoneBars)
+        box b = box.new(left=leftTime, top=top, right=time + futureMs, bottom=bottom, xloc=xloc.bar_time,
+         border_color=visible ? border : color.new(border, 100), bgcolor=visible ? fill : color.new(fill, 100),
+         text=showGrades ? grade : "", text_color=color.white, text_size=size.tiny)
+        array.push(zoneBoxes, b)
+        array.push(zoneTops, top)
+        array.push(zoneBottoms, bottom)
+        array.push(zoneAtrs, a)
+        array.push(zoneBulls, bull)
+        array.push(zoneFvgs, hasFvg)
+        array.push(zoneBreakers, isBreaker)
+        array.push(zoneArmed, false)
+        array.push(zoneSawExtreme, false)
+        array.push(zoneSawCross, false)
+        array.push(zoneBlocked, false)
+        array.push(zoneAges, 0)
+        array.push(zoneCreatedBars, bar_index)
+        array.push(zoneLastTouches, -100000)
+        array.push(zoneExitBars, -100000)
+        array.push(zoneInsideCounts, 0)
+        array.push(zoneGrades, grade)
+
+if newObTfBar
+    if newBullCandidate
+        f_addZone(true, candidateBullTop, candidateBullBottom, candidateAtr, candidateTime, candidateBullGrade, candidateBullFvg, false)
+    if newBearCandidate
+        f_addZone(false, candidateBearTop, candidateBearBottom, candidateAtr, candidateTime, candidateBearGrade, candidateBearFvg, false)
+    if array.size(zoneAges) > 0
+        for i = 0 to array.size(zoneAges) - 1
+            array.set(zoneAges, i, array.get(zoneAges, i) + 1)
+
+// Keep only the newest N zones per side.
+if array.size(zoneBoxes) > 0
+    int bullsSeen = 0
+    int bearsSeen = 0
+    for i = array.size(zoneBoxes) - 1 to 0
+        bool bull = array.get(zoneBulls, i)
+        if bull
+            bullsSeen += 1
+        else
+            bearsSeen += 1
+        if (bull and bullsSeen > keepPerSide) or (not bull and bearsSeen > keepPerSide)
+            f_deleteZone(i)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Stochastic data and confirmation
+//──────────────────────────────────────────────────────────────────────────────
+f_stochData() =>
+    float rawK = ta.stoch(close, high, low, kLen)
+    float k = ta.sma(rawK, kSmooth)
+    float d = ta.sma(k, dLen)
+    bool bullCross = ta.crossover(k, d)
+    bool bearCross = ta.crossunder(k, d)
+    bool bullExit = ta.crossover(k, oversold)
+    bool bearExit = ta.crossunder(k, overbought)
+    [k, d, bullCross, bearCross, bullExit, bearExit, time]
+
+[rtStoK, rtStoD, rtStoBullCross, rtStoBearCross, rtStoBullExit, rtStoBearExit, rtStoTime] =
+ request.security(syminfo.tickerid, stoTf, f_stochData(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+f_stochConfirmedData() =>
+    float rawK = ta.stoch(close, high, low, kLen)
+    float k = ta.sma(rawK, kSmooth)
+    float d = ta.sma(k, dLen)
+    [k[1], d[1], ta.crossover(k, d)[1], ta.crossunder(k, d)[1],
+     ta.crossover(k, oversold)[1], ta.crossunder(k, overbought)[1], time[1]]
+
+[closedStoK, closedStoD, closedStoBullCross, closedStoBearCross, closedStoBullExit, closedStoBearExit, closedStoTime] =
+ request.security(syminfo.tickerid, stoTf, f_stochConfirmedData(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+
+float stoK = realtimeSto ? rtStoK : closedStoK
+float stoD = realtimeSto ? rtStoD : closedStoD
+bool stoBullCross = realtimeSto ? rtStoBullCross : closedStoBullCross
+bool stoBearCross = realtimeSto ? rtStoBearCross : closedStoBearCross
+bool stoBullExit = realtimeSto ? rtStoBullExit : closedStoBullExit
+bool stoBearExit = realtimeSto ? rtStoBearExit : closedStoBearExit
+int stoTime = realtimeSto ? rtStoTime : closedStoTime
+bool newStoSample = ta.change(stoTime) != 0
+bool stoBarAllowed = realtimeSto or newStoSample
+bool bullCrossEvent = stoBarAllowed and stoBullCross
+bool bearCrossEvent = stoBarAllowed and stoBearCross
+bool bullExitEvent = stoBarAllowed and stoBullExit
+bool bearExitEvent = stoBarAllowed and stoBearExit
+
+var int lastSignalBar = -100000
+bool buySignal = false
+bool sellSignal = false
+float signalEntry = na
+float signalSl = na
+float signalTp = na
+string signalGrade = ""
+int signalZoneIndex = na
+
+// Zone update, arming, invalidation, and signal selection.
+if array.size(zoneBoxes) > 0
+    for i = array.size(zoneBoxes) - 1 to 0
+        float top = array.get(zoneTops, i)
+        float bottom = array.get(zoneBottoms, i)
+        float za = array.get(zoneAtrs, i)
+        bool bull = array.get(zoneBulls, i)
+        bool isBreaker = array.get(zoneBreakers, i)
+        int futureMs = int(timeframe.in_seconds() * 1000 * extendZoneBars)
+        box.set_right(array.get(zoneBoxes, i), time + futureMs)
+
+        bool inside = touchMode == "ไส้เทียนแตะ" ? low <= top and high >= bottom : close <= top and close >= bottom
+        int insideCount = inside ? array.get(zoneInsideCounts, i) + 1 : 0
+        array.set(zoneInsideCounts, i, insideCount)
+        if blockIfStuck > 0 and insideCount > blockIfStuck
+            array.set(zoneBlocked, i, true)
+
+        bool broken = bull ? (breakMode == "ราคาปิดทะลุ" ? close < bottom : low < bottom) :
+         (breakMode == "ราคาปิดทะลุ" ? close > top : high > top)
+        bool expired = expireObBars > 0 and array.get(zoneAges, i) > expireObBars
+        bool deleteStuck = deleteIfStuck > 0 and insideCount > deleteIfStuck
+
+        if broken and breakerOn and (not breakerFvgOnly or array.get(zoneFvgs, i))
+            string grade = array.get(zoneGrades, i)
+            bool newBull = not bull
+            f_addZone(newBull, top, bottom, za, time, grade, array.get(zoneFvgs, i), true)
+            f_deleteZone(i)
+        else if broken or expired or deleteStuck
+            f_deleteZone(i)
+        else
+            bool canRetouch = bar_index - array.get(zoneLastTouches, i) >= retouchCooldown
+            bool mature = bar_index - array.get(zoneCreatedBars, i) >= touchDelay
+            if inside and mature and canRetouch
+                array.set(zoneArmed, i, true)
+                array.set(zoneLastTouches, i, bar_index)
+                array.set(zoneExitBars, i, -100000)
+            if array.get(zoneArmed, i) and not inside and array.get(zoneExitBars, i) < 0
+                array.set(zoneExitBars, i, bar_index)
+            int exitedAt = array.get(zoneExitBars, i)
+            if exitedAt >= 0 and bar_index - exitedAt > armedAfterExit
+                array.set(zoneArmed, i, false)
+                array.set(zoneSawExtreme, i, false)
+                array.set(zoneSawCross, i, false)
+
+            bool extreme = bull ? stoK < oversold : stoK > overbought
+            if array.get(zoneArmed, i) and extreme
+                array.set(zoneSawExtreme, i, true)
+            bool crossEvent = bull ? bullCrossEvent : bearCrossEvent
+            if array.get(zoneArmed, i) and crossEvent
+                array.set(zoneSawCross, i, true)
+            bool armedReady = array.get(zoneArmed, i) and
+             (armedMode == "ตลอดเวลาที่อยู่ในโซน" or array.get(zoneSawExtreme, i))
+            bool withinTolerance = close <= top + signalZoneTolerance * za and close >= bottom - signalZoneTolerance * za
+            bool locationPass = not signalMustBeInZone or withinTolerance
+            bool sideTrendPass = not useTrend or (bull ? bullTrend : bearTrend)
+            bool atrRelevant = atrDirection == "ทั้งสองฝั่ง" or
+             (bull and trendClose >= emaFast) or (not bull and trendClose <= emaFast)
+            bool sideAtrPass = not useAtr or not atrRelevant or atrPass
+            bool cooldownPass = bar_index - lastSignalBar >= signalCooldown
+            bool timingPass = alertTiming == "ทันที" or barstate.isconfirmed
+            bool exitEvent = bull ? bullExitEvent : bearExitEvent
+            bool crossedAndOutside = array.get(zoneSawCross, i) and (bull ? stoK > oversold : stoK < overbought)
+            bool selectedStoTrigger = triggerMode == "ทั้งสองอย่าง (เข้มสุด)" ? crossedAndOutside :
+             triggerMode == "K ตัด D" ? crossEvent : exitEvent
+            bool stoPass = not requireSto or (selectedStoTrigger and array.get(zoneSawExtreme, i))
+            bool ready = not array.get(zoneBlocked, i) and armedReady and locationPass and sideTrendPass and sideAtrPass and cooldownPass and timingPass and stoPass
+            if ready and not buySignal and not sellSignal
+                buySignal := bull
+                sellSignal := not bull
+                signalEntry := close
+                signalSl := bull ? bottom - slBufferAtr * za : top + slBufferAtr * za
+                float risk = math.abs(signalEntry - signalSl)
+                signalTp := bull ? signalEntry + risk * rr : signalEntry - risk * rr
+                signalGrade := array.get(zoneGrades, i)
+                signalZoneIndex := i
+                lastSignalBar := bar_index
+                array.set(zoneArmed, i, false)
+                array.set(zoneSawExtreme, i, false)
+                array.set(zoneSawCross, i, false)
+
+// Display only the nearest requested number of zones on each side.
+if barstate.islast and array.size(zoneBoxes) > 0
+    for i = 0 to array.size(zoneBoxes) - 1
+        bool bull = array.get(zoneBulls, i)
+        bool isBreaker = array.get(zoneBreakers, i)
+        float center = (array.get(zoneTops, i) + array.get(zoneBottoms, i)) / 2
+        float distance = math.abs(close - center)
+        int nearer = 0
+        if nearestZones > 0
+            for j = 0 to array.size(zoneBoxes) - 1
+                if i != j and array.get(zoneBulls, j) == bull
+                    float otherCenter = (array.get(zoneTops, j) + array.get(zoneBottoms, j)) / 2
+                    if math.abs(close - otherCenter) < distance
+                        nearer += 1
+        bool visible = (bull ? showBullZones : showBearZones) and (nearestZones == 0 or nearer < nearestZones)
+        color border = isBreaker ? (bull ? bullBbBorder : bearBbBorder) : (bull ? bullBorder : bearBorder)
+        color fill = isBreaker ? (bull ? bullBbFill : bearBbFill) : (bull ? bullFill : bearFill)
+        box.set_border_color(array.get(zoneBoxes, i), visible ? border : color.new(border, 100))
+        box.set_bgcolor(array.get(zoneBoxes, i), visible ? fill : color.new(fill, 100))
+
+//──────────────────────────────────────────────────────────────────────────────
+// Signal drawings and trade levels
+//──────────────────────────────────────────────────────────────────────────────
+var array<label> signalLabels = array.new_label()
+var array<line> entryLines = array.new_line()
+var array<line> tpLines = array.new_line()
+var array<line> slLines = array.new_line()
+var array<label> entryLabels = array.new_label()
+var array<label> tpLabels = array.new_label()
+var array<label> slLabels = array.new_label()
+var array<float> activeTps = array.new_float()
+var array<float> activeSls = array.new_float()
+var array<bool> activeLongs = array.new_bool()
+var array<int> activeHitBars = array.new_int()
+
+f_deleteTrade(int idx) =>
+    line.delete(array.get(entryLines, idx))
+    line.delete(array.get(tpLines, idx))
+    line.delete(array.get(slLines, idx))
+    label eLab = array.get(entryLabels, idx)
+    label tLab = array.get(tpLabels, idx)
+    label sLab = array.get(slLabels, idx)
+    if not na(eLab)
+        label.delete(eLab)
+    if not na(tLab)
+        label.delete(tLab)
+    if not na(sLab)
+        label.delete(sLab)
+    array.remove(entryLines, idx)
+    array.remove(tpLines, idx)
+    array.remove(slLines, idx)
+    array.remove(entryLabels, idx)
+    array.remove(tpLabels, idx)
+    array.remove(slLabels, idx)
+    array.remove(activeTps, idx)
+    array.remove(activeSls, idx)
+    array.remove(activeLongs, idx)
+    array.remove(activeHitBars, idx)
+
+f_labelSize() =>
+    priceLabelSize == "จิ๋ว" ? size.tiny : priceLabelSize == "เล็ก" ? size.small : size.normal
+
+f_levelText(string name, float price) =>
+    priceLabelText == "ชื่อเท่านั้น" ? name : priceLabelText == "ราคาเท่านั้น" ? str.tostring(price, format.mintick) :
+     name + " " + str.tostring(price, format.mintick)
+
+if buySignal or sellSignal
+    bool isBuy = buySignal
+    if showSignalArrows
+        string arrowText = showSignalText ? (isBuy ? "BUY" : "SELL") : ""
+        label arrow = label.new(bar_index, isBuy ? low : high, arrowText,
+         style=isBuy ? label.style_label_up : label.style_label_down,
+         color=isBuy ? color.rgb(35, 104, 230) : color.rgb(232, 48, 66), textcolor=color.white, size=size.tiny)
+        array.push(signalLabels, arrow)
+        while array.size(signalLabels) > keepSignalLabels and array.size(signalLabels) > 0
+            label.delete(array.shift(signalLabels))
+
+    if showTradeLines
+        int x1 = bar_index
+        int x2 = bar_index + tradeLineLength
+        line eLine = line.new(x1, signalEntry, x2, signalEntry, color=entryColor, width=1)
+        line tLine = line.new(x1, signalTp, x2, signalTp, color=tpColor, width=1)
+        line sLine = line.new(x1, signalSl, x2, signalSl, color=slColor, width=1)
+        if showTradeFill
+            linefill.new(eLine, tLine, profitFill)
+            linefill.new(eLine, sLine, lossFill)
+        int labelX = priceLabelPosition == "ปลายเส้น" ? x2 : x1
+        label eLabel = na
+        label tLabel = na
+        label sLabel = na
+        if showPriceLabels
+            color eBg = priceLabelStyle == "มีกรอบสี" ? entryColor : color.new(entryColor, 100)
+            color tBg = priceLabelStyle == "มีกรอบสี" ? tpColor : color.new(tpColor, 100)
+            color sBg = priceLabelStyle == "มีกรอบสี" ? slColor : color.new(slColor, 100)
+            eLabel := label.new(labelX, signalEntry, f_levelText("Entry", signalEntry), style=label.style_label_left,
+             color=eBg, textcolor=priceLabelStyle == "มีกรอบสี" ? priceLabelTextColor : entryColor, size=f_labelSize())
+            tLabel := label.new(labelX, signalTp, f_levelText("TP", signalTp), style=label.style_label_left,
+             color=tBg, textcolor=priceLabelStyle == "มีกรอบสี" ? priceLabelTextColor : tpColor, size=f_labelSize())
+            sLabel := label.new(labelX, signalSl, f_levelText("SL", signalSl), style=label.style_label_left,
+             color=sBg, textcolor=priceLabelStyle == "มีกรอบสี" ? priceLabelTextColor : slColor, size=f_labelSize())
+        array.push(entryLines, eLine)
+        array.push(tpLines, tLine)
+        array.push(slLines, sLine)
+        array.push(entryLabels, eLabel)
+        array.push(tpLabels, tLabel)
+        array.push(slLabels, sLabel)
+        array.push(activeTps, signalTp)
+        array.push(activeSls, signalSl)
+        array.push(activeLongs, isBuy)
+        array.push(activeHitBars, -1)
+        while array.size(entryLines) > 80
+            f_deleteTrade(0)
+
+    string dynamicMessage = (isBuy ? "BUY" : "SELL") + " " + syminfo.ticker +
+     " | Entry=" + str.tostring(signalEntry, format.mintick) +
+     " | SL=" + str.tostring(signalSl, format.mintick) +
+     " | TP=" + str.tostring(signalTp, format.mintick) +
+     " | RR=" + str.tostring(rr) + " | Grade=" + signalGrade
+    alert(dynamicMessage, alertTiming == "รอแท่งปิด" ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
+
+if array.size(entryLines) > 0
+    for i = array.size(entryLines) - 1 to 0
+        bool isLong = array.get(activeLongs, i)
+        bool hit = isLong ? high >= array.get(activeTps, i) or low <= array.get(activeSls, i) :
+         low <= array.get(activeTps, i) or high >= array.get(activeSls, i)
+        int hitBar = array.get(activeHitBars, i)
+        if hit and hitBar < 0
+            array.set(activeHitBars, i, bar_index)
+            hitBar := bar_index
+        bool clean = cleanupTradeAfter > 0 and hitBar >= 0 and bar_index - hitBar >= cleanupTradeAfter
+        if clean
+            f_deleteTrade(i)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Checklist table and timeframe warning
+//──────────────────────────────────────────────────────────────────────────────
+f_tablePosition() =>
+    tablePosition == "บนซ้าย" ? position.top_left : tablePosition == "บนขวา" ? position.top_right :
+     tablePosition == "ล่างซ้าย" ? position.bottom_left : position.bottom_right
+
+f_tableSize() =>
+    tableTextSize == "จิ๋ว" ? size.tiny : tableTextSize == "เล็ก" ? size.small : size.normal
+
+var table checklist = table.new(f_tablePosition(), 2, 9, frame_color=tableBorderColor,
+ frame_width=tableFrameWidth, border_color=tableBorderColor, border_width=tableBorderWidth)
+
+f_cell(int col, int row, string cellText, color bg) =>
+    table.cell(checklist, col, row, cellText, bgcolor=color.new(bg, tableTransparency),
+     text_color=tableTextColor, text_size=f_tableSize())
+
+bool anyArmed = false
+bool anyTouched = false
+if array.size(zoneBoxes) > 0
+    for i = 0 to array.size(zoneBoxes) - 1
+        anyArmed := anyArmed or array.get(zoneArmed, i)
+        float zt = array.get(zoneTops, i)
+        float zb = array.get(zoneBottoms, i)
+        anyTouched := anyTouched or (low <= zt and high >= zb)
+
+if barstate.islast
+    table.clear(checklist, 0, 0, 1, 8)
+    if showChecklist
+        f_cell(0, 0, "SMCxSTO V3.0", tableTitleColor)
+        f_cell(1, 0, bullTrend ? "BUY" : bearTrend ? "SELL" : "WAIT", tableHeaderColor)
+        if compactTable
+            f_cell(0, 1, "SIGNAL", tableSummaryColor)
+            f_cell(1, 1, buySignal ? "BUY ✓" : sellSignal ? "SELL ✓" : "รอ", buySignal or sellSignal ? passColor : failColor)
+        else
+            f_cell(0, 1, "① TREND", tableHeaderColor)
+            f_cell(1, 1, trendPass ? "✓" : "X", trendPass ? passColor : failColor)
+            f_cell(0, 2, "② ATR", tableHeaderColor)
+            f_cell(1, 2, atrPass ? "✓ " + str.tostring(trendDistance / trendAtr, "#.##") + "x" : "X", atrPass ? passColor : failColor)
+            f_cell(0, 3, "③ OB ZONE", tableHeaderColor)
+            f_cell(1, 3, array.size(zoneBoxes) > 0 ? "✓ " + str.tostring(array.size(zoneBoxes)) : "X", array.size(zoneBoxes) > 0 ? passColor : failColor)
+            f_cell(0, 4, "④ TOUCH", tableHeaderColor)
+            f_cell(1, 4, anyTouched or anyArmed ? "✓" : "X", anyTouched or anyArmed ? passColor : failColor)
+            f_cell(0, 5, "⑤ STO", tableHeaderColor)
+            bool extremeNow = stoK < oversold or stoK > overbought
+            f_cell(1, 5, extremeNow ? "ARMED" : "รอ", extremeNow ? passColor : failColor)
+            f_cell(0, 6, "⑥ RR", tableHeaderColor)
+            f_cell(1, 6, rr >= 2 ? "✓ 1:" + str.tostring(rr) : "X", rr >= 2 ? passColor : failColor)
+            f_cell(0, 7, "SIGNAL", tableSummaryColor)
+            f_cell(1, 7, buySignal ? "BUY ✓" : sellSignal ? "SELL ✓" : "รอ", buySignal or sellSignal ? passColor : failColor)
+            if showDebug
+                f_cell(0, 8, "DEBUG", tableHeaderColor)
+                f_cell(1, 8, "K " + str.tostring(stoK, "#.0") + " / D " + str.tostring(stoD, "#.0"), tableHeaderColor)
+
+float chartSeconds = timeframe.in_seconds()
+float stoSeconds = timeframe.in_seconds(stoTf)
+bool lowerTfProblem = stoSeconds < chartSeconds
+var label tfWarning = na
+if barstate.islast
+    if not na(tfWarning)
+        label.delete(tfWarning)
+    if showTfWarning and lowerTfProblem
+        tfWarning := label.new(bar_index, high, allowLowerSto ?
+         "คำเตือน: STO ต่ำกว่า TF กราฟ อาจพลาด intrabar\nแนะนำเปิดกราฟ " + stoTf :
+         "TF ไม่ถูกต้อง: เปิดกราฟ " + stoTf,
+         style=label.style_label_down, color=color.orange, textcolor=color.black)
+
+alertcondition(buySignal, "SMCxSTO BUY", "SMCxSTO BUY signal")
+alertcondition(sellSignal, "SMCxSTO SELL", "SMCxSTO SELL signal")

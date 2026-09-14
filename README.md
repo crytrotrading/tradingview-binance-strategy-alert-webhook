@@ -9,9 +9,10 @@ TradingView แอปคำนวณสัญญาณจากแท่งป�
 - เมื่อพบ setup ใหม่ สถานะ Retest ของคู่นั้นและ Timeframe นั้นจะเริ่มใหม่
 - ค้นหาคู่ได้ทันที และค่าเริ่มต้นแสดงเฉพาะคู่ที่มีสัญญาณโดยเรียงไว้ด้านบน
 
-หน้า `/smc` เป็น SMCxSTO V3.0 scanner ตาม preset `Trend 15m / Order Block
-5m / Stochastic 1m` แสดง BUY/SELL พร้อม Entry, TP, SL, RR 1:2.5, Grade และ
-เวลาสัญญาณ แยก Binance และ Windsor MT5
+หน้า `/smc` เป็น SMCxSTO V3.1 scanner ตาม preset `Trend 15m / Order Block
+5m / Stochastic 1m` โดยขยายขอบ OB ทั้งสองด้านด้วย Swing tolerance `0.5 × ATR`
+และแสดง BUY/SELL พร้อม Entry, TP, SL, RR 1:2.5, Grade และเวลาสัญญาณ แยก
+Binance และ Windsor MT5
 
 ## เริ่มใช้งาน
 

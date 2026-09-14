@@ -1,4 +1,4 @@
-"""Server-side SMCxSTO V3.0 scanner using the Pine defaults."""
+"""Server-side SMCxSTO V3.1 scanner using the Pine defaults."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from signal_engine import Candle
 MINUTE_MS = 60_000
 OB_MS = 5 * MINUTE_MS
 TREND_MS = 15 * MINUTE_MS
+SWING_TOLERANCE_ATR = 0.5
 
 
 @dataclass
@@ -141,6 +142,10 @@ def _candidate_zones(candles: list[Candle]) -> list[Zone]:
                 top = max(top, candles[index + 2].low)
             if not bull and has_fvg:
                 bottom = min(bottom, candles[index + 2].high)
+            # V3.1 expands both POI edges using Swing tolerance before
+            # minimum-height and spacing checks.
+            top += SWING_TOLERANCE_ATR * zone_atr
+            bottom -= SWING_TOLERANCE_ATR * zone_atr
             if top - bottom < 0.5 * zone_atr:
                 continue
             created_at = candles[confirmed_index].open_time + OB_MS

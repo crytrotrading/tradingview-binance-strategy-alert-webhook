@@ -27,6 +27,20 @@ class SmcEngineTests(unittest.TestCase):
         zones = _candidate_zones(candles)
         self.assertTrue(any(zone.bull and zone.grade in {"A", "B"} for zone in zones))
 
+    def test_v31_pads_order_block_by_half_atr_per_side(self):
+        candles = [
+            candle(index, 109, 110, 108, 109)
+            for index in range(30)
+        ]
+        candles[15] = candle(15, 102, 102, 100, 101)
+        candles[16] = candle(16, 102.5, 104, 102, 103.5)
+        candles[17] = candle(17, 103.5, 105, 103, 104.5)
+
+        zone = next(zone for zone in _candidate_zones(candles) if zone.bull)
+
+        self.assertAlmostEqual(zone.top, 104.25)
+        self.assertAlmostEqual(zone.bottom, 98.75)
+
     def test_stochastic_stays_within_bounds(self):
         candles = [
             candle(index, 100 + index, 101 + index, 99 + index, 100.5 + index, 1)

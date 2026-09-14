@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from threading import Lock
+import time
 
 from signal_engine import Candle
 
@@ -28,6 +29,7 @@ class Mt5MarketData:
         self._lock = Lock()
         self._resolved: dict[str, str] = {}
         self._suffix = os.getenv("MT5_SYMBOL_SUFFIX", "c")
+        self._time_offset: tuple[float, int] | None = None
 
     def connect(self) -> None:
         if mt5 is None:
@@ -104,10 +106,42 @@ class Mt5MarketData:
             tick = mt5.symbol_info_tick(symbol)
         if tick is None:
             raise RuntimeError(f"ไม่พบราคาของ {symbol}: {mt5.last_error()}")
+        self._remember_time_offset(tick)
         return float(tick.bid or tick.last or tick.ask)
+
+    def _remember_time_offset(self, tick) -> int:
+        override = os.getenv("MT5_SERVER_UTC_OFFSET_HOURS", "auto").strip().lower()
+        if override != "auto":
+            try:
+                offset = int(float(override) * 3600)
+                self._time_offset = (time.monotonic(), offset)
+                return offset
+            except ValueError:
+                pass
+        if self._time_offset and time.monotonic() - self._time_offset[0] < 3600:
+            return self._time_offset[1]
+        tick_time = int(getattr(tick, "time", 0) or 0)
+        difference = tick_time - time.time()
+        offset_hours = round(difference / 3600)
+        offset = (
+            offset_hours * 3600
+            if -12 <= offset_hours <= 14
+            and abs(difference - offset_hours * 3600) <= 15 * 60
+            else 0
+        )
+        self._time_offset = (time.monotonic(), offset)
+        return offset
+
+    def _server_time_offset(self, symbol: str) -> int:
+        if self._time_offset and time.monotonic() - self._time_offset[0] < 3600:
+            return self._time_offset[1]
+        with self._lock:
+            tick = mt5.symbol_info_tick(symbol)
+        return self._remember_time_offset(tick) if tick is not None else 0
 
     def closed_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
         self.connect()
+        server_offset = self._server_time_offset(symbol)
         mt5_timeframe = getattr(mt5, TIMEFRAME_NAMES[timeframe])
         with self._lock:
             rates = mt5.copy_rates_from_pos(symbol, mt5_timeframe, 0, limit + 1)
@@ -117,7 +151,7 @@ class Mt5MarketData:
         # Position 0 is the currently forming candle. Signals use closed candles only.
         return [
             Candle(
-                open_time=int(rate["time"]) * 1000,
+                open_time=(int(rate["time"]) - server_offset) * 1000,
                 high=float(rate["high"]),
                 low=float(rate["low"]),
                 close=float(rate["close"]),

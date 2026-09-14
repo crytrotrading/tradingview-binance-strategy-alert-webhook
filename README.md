@@ -66,6 +66,7 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 | `MT5_USE_MARKET_WATCH` | true | อ่านทุกคู่ที่แสดงใน Market Watch |
 | `MT5_SYMBOL_SUFFIX` | `c` | suffix ที่ตัดออกจากชื่อบนหน้าเว็บ |
 | `MT5_PATH` | ตรวจอัตโนมัติ | path ของ `terminal64.exe` กรณีมี MT5 หลายตัว |
+| `MT5_SERVER_UTC_OFFSET_HOURS` | `auto` | ชดเชยเวลาเซิร์ฟเวอร์ MT5; Windsor ปกติ +2/+3 ตาม DST |
 | `ALTFINS_API_KEY` | ว่าง | API Key สำหรับ News และ Calendar Events |
 | `ALTFINS_REFRESH_HOURS` | `7,19` | ชั่วโมงอัปเดตข่าวตามเวลาไทย |
 | `ALTFINS_CACHE_FILE` | Local AppData | ไฟล์ cache ข่าวถาวร |

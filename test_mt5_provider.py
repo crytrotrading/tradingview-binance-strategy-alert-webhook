@@ -68,6 +68,19 @@ class Mt5MarketDataTests(unittest.TestCase):
             ],
         )
 
+    @patch("mt5_provider.time.monotonic", return_value=100)
+    @patch("mt5_provider.time.time", return_value=1_000)
+    def test_detects_windsor_server_utc_offset(self, _time, _monotonic):
+        tick = SimpleNamespace(time=1_000 + 3 * 3600)
+        self.assertEqual(self.provider._remember_time_offset(tick), 3 * 3600)
+
+    def test_allows_explicit_server_offset_override(self):
+        with patch.dict("os.environ", {"MT5_SERVER_UTC_OFFSET_HOURS": "2"}):
+            self.assertEqual(
+                self.provider._remember_time_offset(SimpleNamespace(time=0)),
+                2 * 3600,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

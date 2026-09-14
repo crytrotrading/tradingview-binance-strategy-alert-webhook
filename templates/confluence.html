@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMC × Fibo Confluence</title>
+  <style>
+    :root { color-scheme:dark; --bg:#070b12; --panel:#101722; --line:#233044; --muted:#8492a6; --buy:#26a69a; --sell:#ff6b57; --gold:#f7c843; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -20%,#17243a 0,var(--bg) 52%); color:#eef3fa; font:14px/1.5 Inter,system-ui,sans-serif; }
+    main { width:min(1880px,calc(100% - 28px)); margin:auto; padding:28px 0; }
+    header { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:18px; }
+    h1 { margin:0; font-size:clamp(23px,3vw,34px); }
+    .subtitle,.updated { color:var(--muted); font-size:12px; }
+    nav { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    nav a { color:#aebed2; text-decoration:none; padding:6px 10px; border:1px solid var(--line); border-radius:7px; }
+    nav a.active { color:#fff; background:#725b15; border-color:#a88822; }
+    .controls { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .search { width:min(320px,100%); padding:10px 13px; border:1px solid var(--line); border-radius:8px; outline:none; background:var(--panel); color:#fff; }
+    .columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .panel-heading { display:flex; justify-content:space-between; margin:0 3px 8px; }
+    .panel-heading h2 { margin:0; font-size:16px; }
+    .panel-heading span { color:var(--muted); font-size:12px; }
+    .table-wrap { overflow:auto; border:1px solid var(--line); border-radius:14px; background:rgba(16,23,34,.95); }
+    table { width:100%; min-width:940px; border-collapse:collapse; }
+    th,td { padding:11px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+    th { color:var(--muted); font-size:11px; text-transform:uppercase; }
+    th:first-child,td:first-child { text-align:left; position:sticky; left:0; z-index:1; background:var(--panel); }
+    tbody tr:hover td { background-color:#152033; }
+    .symbol { font-weight:800; }
+    .exchange,.session { display:block; color:var(--muted); font-size:9px; }
+    .badge { display:inline-flex; min-width:54px; justify-content:center; padding:5px 8px; border-radius:6px; font-size:11px; font-weight:800; }
+    .buy { color:#68e0d5; background:#26a69a24; border:1px solid #26a69a70; }
+    .sell { color:#ff9485; background:#ff6b5720; border:1px solid #ff6b576b; }
+    .zone { color:var(--gold); font-variant-numeric:tabular-nums; }
+    .price { font-variant-numeric:tabular-nums; }
+    .error { color:#ff9485; }
+    @media(max-width:1100px){.columns{grid-template-columns:1fr}}
+    @media(max-width:640px){header{align-items:start;flex-direction:column}.controls{align-items:stretch}.search{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>SMC × Fibo Confluence</h1>
+      <div class="subtitle">แสดง Entry จากหน้า 2 ที่อยู่ภายใน Fibo zone ของหน้า 1</div>
+      <nav>
+        <a href="/">หน้า 1 · Fibo Retest</a>
+        <a href="/smc">หน้า 2 · SMCxSTO</a>
+        <a href="/confluence" class="active">หน้า 3 · จุดร่วม</a>
+      </nav>
+    </div>
+    <div id="updated" class="updated">กำลังโหลด…</div>
+  </header>
+  <div class="controls">
+    <input id="search" class="search" type="search" placeholder="ค้นหา BTC, EURUSD, XAU…">
+  </div>
+  <div class="columns">
+    {% for provider, title in [("crypto","Crypto · Binance"),("forex","Forex · Windsor MT5")] %}
+    <section>
+      <div class="panel-heading"><h2>{{ title }}</h2><span id="{{ provider }}-count">กำลังโหลด…</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Market</th><th>SMC</th><th>Entry</th><th>Fibo TF</th><th>Fibo Signal</th><th>Fibo Zone</th><th>TP</th><th>SL</th><th>Grade</th><th>เวลา (ไทย)</th></tr></thead>
+          <tbody id="{{ provider }}-rows"><tr id="{{ provider }}-loading"><td colspan="10">กำลังค้นหาจุดร่วม…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</main>
+<script>
+  const refreshMs={{ refresh_seconds }}*1000;
+  const loading={crypto:false,forex:false};
+  function number(value){if(value==null)return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:value<10?5:2}).format(value)}
+  function signalTime(value){return value?new Intl.DateTimeFormat("th-TH",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(new Date(value)):"—"}
+  function render(provider,rows){
+    const body=document.querySelector(`#${provider}-rows`);
+    body.replaceChildren();
+    if(!rows.length){
+      const row=document.createElement("tr"),cell=document.createElement("td");
+      cell.colSpan=10;cell.textContent="ยังไม่พบ Entry หน้า 2 ที่อยู่ใน Fibo zone หน้า 1";row.appendChild(cell);body.appendChild(row);
+    }
+    rows.forEach(item=>{
+      const row=document.createElement("tr");
+      row.dataset.search=`${item.display} ${item.symbol} ${item.timeframe}`.toLowerCase();
+      const market=document.createElement("td");
+      const name=document.createElement("span");name.className="symbol";name.textContent=item.display;
+      const exchange=document.createElement("span");exchange.className="exchange";exchange.textContent=item.symbol;
+      market.append(name,exchange);
+      if(provider==="forex"&&item.trading_hours?.primary){const session=document.createElement("span");session.className="session";session.textContent=`เวลา ${item.trading_hours.primary}`;market.appendChild(session)}
+      row.appendChild(market);
+      const values=[
+        item.status,number(item.entry),item.timeframe.toUpperCase(),item.fibo_direction,
+        `${number(item.zone_low)} – ${number(item.zone_high)}`,number(item.take_profit),
+        number(item.stop_loss),item.grade||"—",signalTime(item.timestamp)
+      ];
+      values.forEach((value,index)=>{
+        const cell=document.createElement("td");
+        if(index===0){const badge=document.createElement("span");badge.className=`badge ${item.status==="BUY"?"buy":"sell"}`;badge.textContent=value;cell.appendChild(badge)}
+        else{cell.textContent=value;cell.className=index===4?"zone":"price"}
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    filter(provider);
+  }
+  function filter(provider){
+    const query=document.querySelector("#search").value.trim().toLowerCase();
+    const rows=[...document.querySelectorAll(`#${provider}-rows tr[data-search]`)];let shown=0;
+    rows.forEach(row=>{row.hidden=query&&!row.dataset.search.includes(query);if(!row.hidden)shown++});
+    document.querySelector(`#${provider}-count`).textContent=`พบ ${shown} จุดร่วม`;
+  }
+  async function update(provider){
+    if(loading[provider])return;loading[provider]=true;
+    try{
+      const response=await fetch(`/api/confluence/${provider}`,{cache:"no-store"}),data=await response.json();
+      if(!response.ok||data.error)throw new Error(data.error||"โหลดไม่สำเร็จ");
+      render(provider,data.rows||[]);
+      document.querySelector("#updated").textContent="อัปเดต "+new Date(data.updated_at).toLocaleTimeString("th-TH");
+    }catch(error){
+      const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();
+      const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=10;cell.className="error";cell.textContent=error.message;row.appendChild(cell);body.appendChild(row);
+      document.querySelector(`#${provider}-count`).textContent="เชื่อมต่อไม่ได้";
+    }finally{loading[provider]=false}
+  }
+  function updateAll(){update("crypto");update("forex")}
+  document.querySelector("#search").addEventListener("input",()=>{filter("crypto");filter("forex")});
+  updateAll();setInterval(updateAll,refreshMs);
+</script>
+</body>
+</html>

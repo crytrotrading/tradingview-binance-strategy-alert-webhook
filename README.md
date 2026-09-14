@@ -14,6 +14,9 @@ TradingView แอปคำนวณสัญญาณจากแท่งป�
 และแสดง BUY/SELL พร้อม Entry, TP, SL, RR 1:2.5, Grade และเวลาสัญญาณ แยก
 Binance และ Windsor MT5
 
+หน้า `/confluence` คัดกรองเฉพาะสัญญาณ SMCxSTO ที่มีราคา Entry อยู่ภายใน
+Fibo zone จากหน้า 1 อย่างน้อยหนึ่ง Timeframe พร้อมแสดง TF และขอบเขตโซนที่ตรงกัน
+
 ## เริ่มใช้งาน
 
 ```bash

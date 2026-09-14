@@ -203,11 +203,7 @@ def _mt5_cell(symbol, timeframe, price):
 
 
 def _smc_result(signal, price):
-    max_age_ms = max(
-        1, int(os.getenv("SMC_SIGNAL_MAX_AGE_HOURS", "24"))
-    ) * 3_600_000
-    if signal is not None and int(time.time() * 1000) - signal.timestamp > max_age_ms:
-        signal = None
+    signal = _recent_smc_signal(signal)
     if signal is None:
         return {"status": "—", "price": price, "no_signal": True}
     return {
@@ -222,6 +218,15 @@ def _smc_result(signal, price):
         "zone_top": signal.zone_top,
         "zone_bottom": signal.zone_bottom,
     }
+
+
+def _recent_smc_signal(signal):
+    max_age_ms = max(
+        1, int(os.getenv("SMC_SIGNAL_MAX_AGE_HOURS", "24"))
+    ) * 3_600_000
+    if signal is not None and int(time.time() * 1000) - signal.timestamp > max_age_ms:
+        return None
+    return signal
 
 
 def _cached_smc(key, loader):
@@ -287,6 +292,14 @@ def dashboard():
 def smc_dashboard():
     return render_template(
         "smc.html",
+        refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
+    )
+
+
+@app.get("/confluence")
+def confluence_dashboard():
+    return render_template(
+        "confluence.html",
         refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
     )
 
@@ -383,6 +396,113 @@ def _smc_forex_dashboard():
     return rows
 
 
+def _matching_fibo_zones(signal, setup_loader):
+    signal = _recent_smc_signal(signal)
+    if signal is None:
+        return []
+    matches = []
+    for timeframe in TIMEFRAMES:
+        setup = setup_loader(timeframe)
+        if setup is not None and setup.zone_low <= signal.entry <= setup.zone_high:
+            matches.append(
+                {
+                    "timeframe": timeframe,
+                    "fibo_direction": setup.direction,
+                    "zone_low": setup.zone_low,
+                    "zone_high": setup.zone_high,
+                    "fibo_confirmed_at": setup.confirmed_at,
+                }
+            )
+    return matches
+
+
+def _confluence_rows(symbols, prices, smc_loader, setup_loader, max_workers):
+    def scan(symbol):
+        exchange = symbol["exchange"]
+        price = prices.get(exchange)
+        if price is None:
+            return []
+        try:
+            signal = smc_loader(exchange)
+            matches = _matching_fibo_zones(
+                signal, lambda timeframe: setup_loader(exchange, timeframe)
+            )
+        except Exception as exc:
+            app.logger.warning("Confluence failed %s: %s", exchange, exc)
+            return []
+        return [
+            {
+                "symbol": exchange,
+                "display": symbol["display"],
+                "price": price,
+                "status": signal.direction,
+                "entry": signal.entry,
+                "take_profit": signal.take_profit,
+                "stop_loss": signal.stop_loss,
+                "rr": signal.rr,
+                "grade": signal.grade,
+                "timestamp": signal.timestamp,
+                **match,
+            }
+            for match in matches
+        ]
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=min(max_workers, max(1, len(symbols)))) as pool:
+        jobs = [pool.submit(scan, symbol) for symbol in symbols]
+        for future in as_completed(jobs):
+            rows.extend(future.result())
+    return sorted(rows, key=lambda row: row["timestamp"], reverse=True)
+
+
+def _confluence_crypto_dashboard():
+    symbols = _market_symbols()
+    prices = _current_prices(symbols)
+    return _confluence_rows(
+        symbols,
+        prices,
+        lambda symbol: _cached_smc(
+            ("binance", symbol),
+            lambda: (
+                _closed_candles(symbol, "1m"),
+                _closed_candles(symbol, "5m"),
+                _closed_candles(symbol, "15m"),
+            ),
+        ),
+        _setup_for,
+        20,
+    )
+
+
+def _confluence_forex_dashboard():
+    symbols = (
+        mt5_data.market_watch_symbols()
+        if MT5_USE_MARKET_WATCH
+        else mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    )
+    prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
+    rows = _confluence_rows(
+        symbols,
+        prices,
+        lambda symbol: _cached_smc(
+            ("mt5", symbol),
+            lambda: (
+                mt5_data.closed_candles(symbol, "1m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "5m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "15m", KLINE_LIMIT),
+            ),
+        ),
+        lambda symbol, timeframe: _cached_setup(
+            ("mt5", symbol, timeframe),
+            lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
+        ),
+        8,
+    )
+    for row in rows:
+        row["trading_hours"] = sessions_for_symbol(row["display"])
+    return rows
+
+
 @app.get("/api/crypto")
 def crypto_data():
     try:
@@ -440,6 +560,38 @@ def smc_forex_data():
             {
                 "updated_at": int(time.time() * 1000),
                 "rows": _smc_forex_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
+@app.get("/api/confluence/crypto")
+def confluence_crypto_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _confluence_crypto_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"โหลด Confluence Crypto ไม่สำเร็จ: {exc}"}), 502
+
+
+@app.get("/api/confluence/forex")
+def confluence_forex_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _confluence_forex_dashboard(),
             }
         )
     except Exception as exc:

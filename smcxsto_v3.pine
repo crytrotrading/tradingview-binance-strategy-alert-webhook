@@ -167,8 +167,12 @@ bool trendPass = not useTrend or bullTrend or bearTrend
 float trendDistance = math.abs(trendClose - emaFast)
 bool atrPass = not useAtr or trendDistance <= trendAtr * maxAtrDistance
 
-plot(showSlow ? emaSlow : na, "EMA ช้า", color=slowColor, linewidth=1)
-plot(showFast ? emaFast : na, "EMA เร็ว", color=fastColor, linewidth=1)
+// The trend filter keeps using the selected higher timeframe. The visible
+// curves use the chart timeframe, matching TradingView's smooth EMA display.
+float visualEmaSlow = ta.ema(close, slowLen)
+float visualEmaFast = ta.ema(close, fastLen)
+plot(showSlow ? visualEmaSlow : na, "EMA ช้า", color=slowColor, linewidth=1)
+plot(showFast ? visualEmaFast : na, "EMA เร็ว", color=fastColor, linewidth=1)
 
 //──────────────────────────────────────────────────────────────────────────────
 // OB/FVG candidates are confirmed on the selected OB timeframe.

@@ -424,18 +424,25 @@ def _smc_forex_dashboard():
     return rows
 
 
-def _matching_fibo_zones(signal, setup_loader):
+def _matching_fibo_zones(signal, analysis_loader):
     signal = _recent_smc_signal(signal)
     if signal is None:
         return []
+    required_trend = "UP" if signal.direction == "BUY" else "DOWN"
     matches = []
     for timeframe in TIMEFRAMES:
-        setup = setup_loader(timeframe)
-        if setup is not None and setup.zone_low <= signal.entry <= setup.zone_high:
+        setup, trend = analysis_loader(timeframe)
+        if (
+            setup is not None
+            and setup.direction == signal.direction
+            and trend == required_trend
+            and setup.zone_low <= signal.entry <= setup.zone_high
+        ):
             matches.append(
                 {
                     "timeframe": timeframe,
                     "fibo_direction": setup.direction,
+                    "trend": trend,
                     "zone_low": setup.zone_low,
                     "zone_high": setup.zone_high,
                     "fibo_confirmed_at": setup.confirmed_at,
@@ -444,43 +451,67 @@ def _matching_fibo_zones(signal, setup_loader):
     return matches
 
 
-def _confluence_rows(symbols, prices, smc_loader, setup_loader, max_workers):
+def _confluence_score(signal, matches):
+    grade_points = 15 if signal.grade == "A" else 8
+    timeframe_points = min(20, len(matches) * 5)
+    return min(100, 40 + 25 + grade_points + timeframe_points)
+
+
+def _entry_state(signal, price):
+    if signal.direction == "BUY":
+        if price >= signal.take_profit:
+            return "AT_TP"
+        if price <= signal.stop_loss:
+            return "AT_SL"
+        return "ABOVE_ENTRY" if price >= signal.entry else "BELOW_ENTRY"
+    if price <= signal.take_profit:
+        return "AT_TP"
+    if price >= signal.stop_loss:
+        return "AT_SL"
+    return "BELOW_ENTRY" if price <= signal.entry else "ABOVE_ENTRY"
+
+
+def _confluence_rows(symbols, prices, smc_loader, analysis_loader, max_workers):
     def scan(symbol):
         exchange = symbol["exchange"]
         price = prices.get(exchange)
         if price is None:
-            return []
+            return None
         try:
             signal = smc_loader(exchange)
             matches = _matching_fibo_zones(
-                signal, lambda timeframe: setup_loader(exchange, timeframe)
+                signal, lambda timeframe: analysis_loader(exchange, timeframe)
             )
         except Exception as exc:
             app.logger.warning("Confluence failed %s: %s", exchange, exc)
-            return []
-        return [
-            {
-                "symbol": exchange,
-                "display": symbol["display"],
-                "price": price,
-                "status": signal.direction,
-                "entry": signal.entry,
-                "take_profit": signal.take_profit,
-                "stop_loss": signal.stop_loss,
-                "rr": signal.rr,
-                "grade": signal.grade,
-                "timestamp": signal.timestamp,
-                **match,
-            }
-            for match in matches
-        ]
+            return None
+        if not matches:
+            return None
+        return {
+            "symbol": exchange,
+            "display": symbol["display"],
+            "price": price,
+            "status": signal.direction,
+            "entry": signal.entry,
+            "take_profit": signal.take_profit,
+            "stop_loss": signal.stop_loss,
+            "rr": signal.rr,
+            "grade": signal.grade,
+            "timestamp": signal.timestamp,
+            "entry_state": _entry_state(signal, price),
+            "score": _confluence_score(signal, matches),
+            "timeframes": [match["timeframe"] for match in matches],
+            "matches": matches,
+        }
 
     rows = []
     with ThreadPoolExecutor(max_workers=min(max_workers, max(1, len(symbols)))) as pool:
         jobs = [pool.submit(scan, symbol) for symbol in symbols]
         for future in as_completed(jobs):
-            rows.extend(future.result())
-    return sorted(rows, key=lambda row: row["timestamp"], reverse=True)
+            row = future.result()
+            if row is not None:
+                rows.append(row)
+    return sorted(rows, key=lambda row: (row["score"], row["timestamp"]), reverse=True)
 
 
 def _confluence_crypto_dashboard():
@@ -497,7 +528,7 @@ def _confluence_crypto_dashboard():
                 _closed_candles(symbol, "15m"),
             ),
         ),
-        _setup_for,
+        _analysis_for,
         20,
     )
 
@@ -520,7 +551,7 @@ def _confluence_forex_dashboard():
                 mt5_data.closed_candles(symbol, "15m", KLINE_LIMIT),
             ),
         ),
-        lambda symbol, timeframe: _cached_setup(
+        lambda symbol, timeframe: _cached_analysis(
             ("mt5", symbol, timeframe),
             lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
         ),

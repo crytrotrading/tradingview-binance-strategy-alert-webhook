@@ -32,8 +32,13 @@
     .badge { display:inline-flex; min-width:54px; justify-content:center; padding:5px 8px; border-radius:6px; font-size:11px; font-weight:800; }
     .buy { color:#68e0d5; background:#26a69a24; border:1px solid #26a69a70; }
     .sell { color:#ff9485; background:#ff6b5720; border:1px solid #ff6b576b; }
-    .zone { color:var(--gold); font-variant-numeric:tabular-nums; }
+    .zone { color:var(--gold); font-variant-numeric:tabular-nums; white-space:pre-line; }
     .price { font-variant-numeric:tabular-nums; }
+    .subvalue { display:block; margin-top:3px; color:var(--muted); font-size:9px; line-height:1.35; }
+    .timeframes { color:#9cc9ff; font-weight:800; }
+    .trend-up { color:#68e0d5; font-weight:800; }
+    .trend-down { color:#ff9485; font-weight:800; }
+    .score { color:var(--gold); font-size:14px; font-weight:900; }
     .error { color:#ff9485; }
     @media(max-width:1500px){th,td{padding:9px 3px;font-size:9px}.badge{min-width:40px;padding:4px 2px}}
     @media(max-width:1100px){.columns{grid-template-columns:1fr}}
@@ -45,7 +50,7 @@
   <header>
     <div>
       <h1>SMC × Fibo Confluence</h1>
-      <div class="subtitle">แสดง Entry จากหน้า 2 ที่อยู่ภายใน Fibo zone ของหน้า 1</div>
+      <div class="subtitle">SMC + Fibo + Trend ทิศเดียวกัน · รวมหลาย TF · เรียงคะแนนสูงสุดก่อน</div>
       <nav>
         <a href="/">หน้า 1 · Fibo Retest</a>
         <a href="/smc">หน้า 2 · SMCxSTO</a>
@@ -63,9 +68,9 @@
       <div class="panel-heading"><h2>{{ title }}</h2><span id="{{ provider }}-count">กำลังโหลด…</span></div>
       <div class="table-wrap">
         <table>
-          <colgroup><col style="width:12%"><col style="width:7%"><col style="width:10%"><col style="width:6%"><col style="width:8%"><col style="width:17%"><col style="width:10%"><col style="width:10%"><col style="width:6%"><col style="width:14%"></colgroup>
-          <thead><tr><th>Market</th><th>SMC</th><th>Entry</th><th>Fibo TF</th><th>Fibo Signal</th><th>Fibo Zone</th><th>TP</th><th>SL</th><th>Grade</th><th>เวลา (ไทย)</th></tr></thead>
-          <tbody id="{{ provider }}-rows"><tr id="{{ provider }}-loading"><td colspan="10">กำลังค้นหาจุดร่วม…</td></tr></tbody>
+          <colgroup><col style="width:16%"><col style="width:9%"><col style="width:14%"><col style="width:9%"><col style="width:23%"><col style="width:9%"><col style="width:13%"><col style="width:7%"></colgroup>
+          <thead><tr><th>Market</th><th>SMC</th><th>Entry / ตอนนี้</th><th>Fibo TF</th><th>Fibo Zones</th><th>Trend</th><th>TP / SL</th><th>Score</th></tr></thead>
+          <tbody id="{{ provider }}-rows"><tr id="{{ provider }}-loading"><td colspan="8">กำลังค้นหาจุดร่วม…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -77,33 +82,40 @@
   const loading={crypto:false,forex:false};
   function number(value){if(value==null)return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:value<10?5:2}).format(value)}
   function signalTime(value){return value?new Intl.DateTimeFormat("th-TH",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(new Date(value)):"—"}
+  function entryState(value){
+    return {AT_TP:"ราคาถึง TP",AT_SL:"ราคาถึง SL",ABOVE_ENTRY:"ราคาเหนือ Entry",BELOW_ENTRY:"ราคาต่ำกว่า Entry"}[value]||"—";
+  }
+  function appendTextCell(row,text,className="",subtext=""){
+    const cell=document.createElement("td");cell.textContent=text;if(className)cell.className=className;
+    if(subtext){const sub=document.createElement("span");sub.className="subvalue";sub.textContent=subtext;cell.appendChild(sub)}
+    row.appendChild(cell);return cell;
+  }
   function render(provider,rows){
     const body=document.querySelector(`#${provider}-rows`);
     body.replaceChildren();
     if(!rows.length){
       const row=document.createElement("tr"),cell=document.createElement("td");
-      cell.colSpan=10;cell.textContent="ยังไม่พบ Entry หน้า 2 ที่อยู่ใน Fibo zone หน้า 1";row.appendChild(cell);body.appendChild(row);
+      cell.colSpan=8;cell.textContent="ยังไม่พบสัญญาณที่ SMC, Fibo และ Trend ตรงกัน";row.appendChild(cell);body.appendChild(row);
     }
     rows.forEach(item=>{
       const row=document.createElement("tr");
-      row.dataset.search=`${item.display} ${item.symbol} ${item.timeframe}`.toLowerCase();
+      row.dataset.search=`${item.display} ${item.symbol} ${(item.timeframes||[]).join(" ")}`.toLowerCase();
       const market=document.createElement("td");
       const name=document.createElement("span");name.className="symbol";name.textContent=item.display;
       const exchange=document.createElement("span");exchange.className="exchange";exchange.textContent=item.symbol;
       market.append(name,exchange);
       if(provider==="forex"&&item.trading_hours?.primary){const session=document.createElement("span");session.className="session";session.textContent=`เวลา ${item.trading_hours.primary}`;market.appendChild(session)}
+      const time=document.createElement("span");time.className="subvalue";time.textContent=signalTime(item.timestamp);market.appendChild(time);
       row.appendChild(market);
-      const values=[
-        item.status,number(item.entry),item.timeframe.toUpperCase(),item.fibo_direction,
-        `${number(item.zone_low)} – ${number(item.zone_high)}`,number(item.take_profit),
-        number(item.stop_loss),item.grade||"—",signalTime(item.timestamp)
-      ];
-      values.forEach((value,index)=>{
-        const cell=document.createElement("td");
-        if(index===0){const badge=document.createElement("span");badge.className=`badge ${item.status==="BUY"?"buy":"sell"}`;badge.textContent=value;cell.appendChild(badge)}
-        else{cell.textContent=value;cell.className=index===4?"zone":"price"}
-        row.appendChild(cell);
-      });
+      const signalCell=document.createElement("td"),badge=document.createElement("span");
+      badge.className=`badge ${item.status==="BUY"?"buy":"sell"}`;badge.textContent=item.status;signalCell.appendChild(badge);
+      const grade=document.createElement("span");grade.className="subvalue";grade.textContent=`Grade ${item.grade||"—"}`;signalCell.appendChild(grade);row.appendChild(signalCell);
+      appendTextCell(row,number(item.entry),"price",`ตอนนี้ ${number(item.price)} · ${entryState(item.entry_state)}`);
+      appendTextCell(row,(item.timeframes||[]).map(value=>value.toUpperCase()).join(" + "),"timeframes");
+      appendTextCell(row,(item.matches||[]).map(match=>`${match.timeframe.toUpperCase()} ${number(match.zone_low)}–${number(match.zone_high)}`).join("\n"),"zone");
+      appendTextCell(row,item.status==="BUY"?"↑ ขึ้น":"↓ ลง",item.status==="BUY"?"trend-up":"trend-down");
+      appendTextCell(row,number(item.take_profit),"price",`SL ${number(item.stop_loss)}`);
+      appendTextCell(row,String(item.score),"score");
       body.appendChild(row);
     });
     filter(provider);
@@ -123,7 +135,7 @@
       document.querySelector("#updated").textContent="อัปเดต "+new Date(data.updated_at).toLocaleTimeString("th-TH");
     }catch(error){
       const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();
-      const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=10;cell.className="error";cell.textContent=error.message;row.appendChild(cell);body.appendChild(row);
+      const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=8;cell.className="error";cell.textContent=error.message;row.appendChild(cell);body.appendChild(row);
       document.querySelector(`#${provider}-count`).textContent="เชื่อมต่อไม่ได้";
     }finally{loading[provider]=false}
   }

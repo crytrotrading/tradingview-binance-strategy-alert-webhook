@@ -40,27 +40,82 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(app._smc_result(signal, 100)["status"], "—")
 
     @patch("app.time.time", return_value=100)
-    def test_matches_smc_entry_inside_fibo_zone(self, _time):
+    def test_confluence_requires_matching_direction_and_trend(self, _time):
         signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
-        setups = {
-            "1m": SimpleNamespace(
-                zone_low=99,
-                zone_high=101,
-                direction="BUY",
-                confirmed_at=90_000,
+        analyses = {
+            "1m": (
+                SimpleNamespace(
+                    zone_low=99,
+                    zone_high=101,
+                    direction="BUY",
+                    confirmed_at=90_000,
+                ),
+                "UP",
             ),
-            "5m": SimpleNamespace(
-                zone_low=101,
-                zone_high=105,
-                direction="SELL",
-                confirmed_at=80_000,
+            "5m": (
+                SimpleNamespace(
+                    zone_low=99,
+                    zone_high=101,
+                    direction="SELL",
+                    confirmed_at=80_000,
+                ),
+                "UP",
+            ),
+            "15m": (
+                SimpleNamespace(
+                    zone_low=99,
+                    zone_high=101,
+                    direction="BUY",
+                    confirmed_at=70_000,
+                ),
+                "DOWN",
             ),
         }
 
-        matches = app._matching_fibo_zones(signal, setups.get)
+        matches = app._matching_fibo_zones(
+            signal, lambda timeframe: analyses.get(timeframe, (None, "SIDEWAY"))
+        )
 
         self.assertEqual([match["timeframe"] for match in matches], ["1m"])
         self.assertEqual(matches[0]["zone_low"], 99)
+        self.assertEqual(matches[0]["trend"], "UP")
+
+    def test_confluence_score_rewards_grade_and_multiple_timeframes(self):
+        grade_a = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
+        grade_b = SmcSignal("BUY", 100, 110, 96, 2.5, "B", 99_000, 102, 98)
+        self.assertGreater(
+            app._confluence_score(grade_a, [{}, {}]),
+            app._confluence_score(grade_b, [{}]),
+        )
+
+    def test_entry_state_uses_current_price_without_claiming_history(self):
+        signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
+        self.assertEqual(app._entry_state(signal, 105), "ABOVE_ENTRY")
+        self.assertEqual(app._entry_state(signal, 110), "AT_TP")
+        self.assertEqual(app._entry_state(signal, 96), "AT_SL")
+
+    @patch("app.time.time", return_value=100)
+    def test_confluence_groups_matching_timeframes_per_symbol(self, _time):
+        signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 99_000, 102, 98)
+        setup = SimpleNamespace(
+            zone_low=99,
+            zone_high=101,
+            direction="BUY",
+            confirmed_at=90_000,
+        )
+        rows = app._confluence_rows(
+            [{"display": "BTC", "exchange": "BTCUSDT"}],
+            {"BTCUSDT": 105},
+            lambda _symbol: signal,
+            lambda _symbol, timeframe: (
+                (setup, "UP") if timeframe in {"1h", "4h"} else (None, "SIDEWAY")
+            ),
+            1,
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["timeframes"], ["1h", "4h"])
+        self.assertEqual(len(rows[0]["matches"]), 2)
 
     @patch("app._confluence_crypto_dashboard", return_value=[{"symbol": "BTCUSDT"}])
     def test_confluence_crypto_endpoint(self, _dashboard):

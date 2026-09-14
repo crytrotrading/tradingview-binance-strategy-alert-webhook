@@ -278,8 +278,11 @@ f_zoneTooClose(float top, float bottom, bool bull, float a) =>
     tooClose
 
 f_addZone(bool bull, float inTop, float inBottom, float a, int leftTime, string grade, bool hasFvg, bool isBreaker) =>
-    float top = inTop
-    float bottom = inBottom
+    // Keep the signal rules unchanged, but pad both zone edges by the
+    // configured Swing tolerance so near-edge reactions remain in the POI.
+    float zonePadding = swingTolerance * a
+    float top = inTop + zonePadding
+    float bottom = inBottom - zonePadding
     float minHeight = minZoneAtr * a
     bool tooSmall = minZoneAtr > 0 and top - bottom < minHeight
     if tooSmall and smallZoneAction == "ขยายให้ถึงขั้นต่ำ"

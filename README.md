@@ -20,6 +20,11 @@ Fibo zone และมีทิศทาง Fibo ตรงกับ SMC ส่�
 สัญญาณทิ้ง รวม TF ที่ตรงกันไว้แถวเดียว ให้คะแนน Confluence 0–100 และแสดง
 ตำแหน่งราคาปัจจุบันเทียบ Entry/TP/SL
 
+หน้า `/xsto` เป็น scanner หน้า 4 จากแพ็กเกจ `xSTO Manual Rebuild v1.0.1`
+ตามค่าเริ่มต้น `M15 Trend / M5 Order Block / M1 Stochastic / RR 1:4` แสดง
+BUY/SELL, Entry, TP, SL, Zone และเวลาสัญญาณสำหรับ Binance และ Windsor MT5
+แพ็กเกจต้นทางระบุว่าเป็นงานสร้างใหม่จากคู่มือ ไม่ใช่ซอร์สต้นฉบับ SMC by BOSSZ
+
 ## เริ่มใช้งาน
 
 ```bash
@@ -82,6 +87,7 @@ TOP_MARKETS=50 FOREX_SYMBOLS="XAUUSD,EURUSD,GBPUSD,USDJPY" python app.py
 | `SIGNAL_CACHE_SECONDS` | 60 | อายุ cache การคำนวณ |
 | `MARKET_CACHE_SECONDS` | 300 | อายุ cache การจัดอันดับ 24 ชั่วโมง |
 | `KLINE_LIMIT` | 1000 | จำนวนแท่งย้อนหลังต่อคู่/TF |
+| `XSTO_SIGNAL_MAX_AGE_HOURS` | 24 | อายุสูงสุดของสัญญาณที่แสดงบนหน้า 4 |
 | `STATE_DB` | โฟลเดอร์ชั่วคราวของระบบ | ไฟล์เก็บสถานะ Retest |
 | `BINANCE_API_URL` | `https://data-api.binance.vision` | Binance public market-data endpoint |
 

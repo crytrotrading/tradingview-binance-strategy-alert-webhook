@@ -14,6 +14,7 @@ from mt5_provider import Mt5MarketData
 from signal_engine import Candle, RetestStore, calculate_setup, classify_ema_trend
 from smc_engine import calculate_smc_signal
 from trading_sessions import sessions_for_symbol
+from xsto_engine import calculate_xsto_signal
 
 app = Flask(__name__)
 
@@ -71,6 +72,7 @@ altfins_feed = AltFinsFeed()
 cache_lock = Lock()
 analysis_cache = {}
 smc_cache = {}
+xsto_cache = {}
 market_cache = None
 
 
@@ -307,6 +309,79 @@ def _smc_mt5_cell(symbol, price):
         return {"status": "!", "price": price, "error": str(exc)}
 
 
+def _xsto_result(signal, price):
+    max_age_ms = max(
+        1, int(os.getenv("XSTO_SIGNAL_MAX_AGE_HOURS", "24"))
+    ) * 3_600_000
+    if signal is not None and int(time.time() * 1000) - signal.timestamp > max_age_ms:
+        signal = None
+    if signal is None:
+        return {"status": "—", "price": price, "no_signal": True}
+    return {
+        "status": signal.direction,
+        "price": price,
+        "entry": signal.entry,
+        "take_profit": signal.take_profit,
+        "stop_loss": signal.stop_loss,
+        "rr": signal.rr,
+        "timestamp": signal.timestamp,
+        "zone_top": signal.zone_top,
+        "zone_bottom": signal.zone_bottom,
+    }
+
+
+def _cached_xsto(key, loader):
+    now = time.monotonic()
+    with cache_lock:
+        cached = xsto_cache.get(key)
+        if cached and now - cached[0] < CACHE_SECONDS:
+            return cached[1]
+    minute, m5, m15 = loader()
+    signal = calculate_xsto_signal(
+        minute,
+        m5,
+        m15,
+        max_age_hours=max(
+            1, int(os.getenv("XSTO_SIGNAL_MAX_AGE_HOURS", "24"))
+        ),
+    )
+    with cache_lock:
+        xsto_cache[key] = (now, signal)
+    return signal
+
+
+def _xsto_binance_cell(symbol, price):
+    try:
+        signal = _cached_xsto(
+            ("binance", symbol),
+            lambda: (
+                _closed_candles(symbol, "1m"),
+                _closed_candles(symbol, "5m"),
+                _closed_candles(symbol, "15m"),
+            ),
+        )
+        return _xsto_result(signal, price)
+    except Exception as exc:
+        app.logger.warning("xSTO Binance failed %s: %s", symbol, exc)
+        return {"status": "!", "price": price, "error": str(exc)}
+
+
+def _xsto_mt5_cell(symbol, price):
+    try:
+        signal = _cached_xsto(
+            ("mt5", symbol),
+            lambda: (
+                mt5_data.closed_candles(symbol, "1m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "5m", KLINE_LIMIT),
+                mt5_data.closed_candles(symbol, "15m", KLINE_LIMIT),
+            ),
+        )
+        return _xsto_result(signal, price)
+    except Exception as exc:
+        app.logger.warning("xSTO MT5 failed %s: %s", symbol, exc)
+        return {"status": "!", "price": price, "error": str(exc)}
+
+
 @app.get("/")
 def dashboard():
     return render_template(
@@ -328,6 +403,14 @@ def smc_dashboard():
 def confluence_dashboard():
     return render_template(
         "confluence.html",
+        refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
+    )
+
+
+@app.get("/xsto")
+def xsto_dashboard():
+    return render_template(
+        "xsto.html",
         refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
     )
 
@@ -419,6 +502,25 @@ def _smc_forex_dashboard():
     )
     prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
     rows = _populate_smc_rows(symbols, prices, _smc_mt5_cell, 8)
+    for row in rows:
+        row["trading_hours"] = sessions_for_symbol(row["display"])
+    return rows
+
+
+def _xsto_crypto_dashboard():
+    symbols = _market_symbols()
+    prices = _current_prices(symbols)
+    return _populate_smc_rows(symbols, prices, _xsto_binance_cell, 20)
+
+
+def _xsto_forex_dashboard():
+    symbols = (
+        mt5_data.market_watch_symbols()
+        if MT5_USE_MARKET_WATCH
+        else mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    )
+    prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
+    rows = _populate_smc_rows(symbols, prices, _xsto_mt5_cell, 8)
     for row in rows:
         row["trading_hours"] = sessions_for_symbol(row["display"])
     return rows
@@ -621,6 +723,38 @@ def smc_forex_data():
             {
                 "updated_at": int(time.time() * 1000),
                 "rows": _smc_forex_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
+@app.get("/api/xsto/crypto")
+def xsto_crypto_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _xsto_crypto_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"โหลด xSTO Crypto ไม่สำเร็จ: {exc}"}), 502
+
+
+@app.get("/api/xsto/forex")
+def xsto_forex_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _xsto_forex_dashboard(),
             }
         )
     except Exception as exc:

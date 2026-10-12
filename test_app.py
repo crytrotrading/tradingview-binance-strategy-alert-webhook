@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import app
 from smc_engine import SmcSignal
+from xsto_engine import XstoSignal
 
 
 class ProviderApiTests(unittest.TestCase):
@@ -33,6 +34,17 @@ class ProviderApiTests(unittest.TestCase):
         response = self.client.get("/api/smc/crypto")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
+
+    @patch("app._xsto_crypto_dashboard", return_value=[{"symbol": "BTCUSDT", "status": "BUY"}])
+    def test_xsto_crypto_endpoint(self, _dashboard):
+        response = self.client.get("/api/xsto/crypto")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
+
+    @patch("app.time.time", return_value=100_000)
+    def test_stale_xsto_signal_is_hidden(self, _time):
+        signal = XstoSignal("BUY", 100, 116, 96, 4, 1, 102, 98)
+        self.assertEqual(app._xsto_result(signal, 100)["status"], "—")
 
     @patch("app.time.time", return_value=100_000)
     def test_stale_smc_market_signal_is_hidden(self, _time):

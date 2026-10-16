@@ -30,6 +30,14 @@ TIMEFRAME_MS = {
     "4h": 4 * 60 * 60_000,
     "1d": 24 * 60 * 60_000,
 }
+RECENT_FIBO_MAX_AGE_BARS = {
+    "1m": 10,
+    "5m": 10,
+    "15m": 10,
+    "1h": 5,
+    "4h": 5,
+    "1d": 5,
+}
 KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
 CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "60"))
 MARKET_CACHE_SECONDS = int(os.getenv("MARKET_CACHE_SECONDS", "300"))
@@ -391,7 +399,7 @@ def _xsto_mt5_cell(symbol, price):
         return {"status": "!", "price": price, "error": str(exc)}
 
 
-def _recent_fibo_scan(candles, timeframe, max_age_bars=2):
+def _recent_fibo_scan(candles, timeframe):
     setup = calculate_setup(candles)
     if setup is None or not candles:
         return None
@@ -406,7 +414,7 @@ def _recent_fibo_scan(candles, timeframe, max_age_bars=2):
     if marker_index < 0:
         return None
     age_bars = len(candles) - 1 - marker_index
-    if age_bars > max_age_bars:
+    if age_bars > RECENT_FIBO_MAX_AGE_BARS[timeframe]:
         return None
     return {
         "status": setup.direction,

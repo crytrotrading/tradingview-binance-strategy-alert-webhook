@@ -47,10 +47,10 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
 
-    def test_recent_fibo_scan_counts_from_backdated_marker_candle(self):
+    def test_recent_fibo_scan_uses_small_and_large_timeframe_limits(self):
         candles = [
             SimpleNamespace(open_time=index * 60_000)
-            for index in range(5)
+            for index in range(12)
         ]
         setup = SimpleNamespace(
             direction="BUY",
@@ -60,17 +60,25 @@ class ProviderApiTests(unittest.TestCase):
             tp2=110,
             rr=1.5,
             reason="Bull Div",
-            b2=2 * 60_000,
-            confirmed_at=4 * 60_000,
+            b2=60_000,
+            confirmed_at=6 * 60_000,
         )
         with patch("app.calculate_setup", return_value=setup):
             result = app._recent_fibo_scan(candles, "1m")
-        self.assertEqual(result["age_bars"], 2)
+        self.assertEqual(result["age_bars"], 10)
         self.assertEqual(result["status"], "BUY")
 
-        setup.b2 = 60_000
+        setup.b2 = 0
         with patch("app.calculate_setup", return_value=setup):
             self.assertIsNone(app._recent_fibo_scan(candles, "1m"))
+
+        setup.b2 = 6 * 60_000
+        with patch("app.calculate_setup", return_value=setup):
+            self.assertEqual(app._recent_fibo_scan(candles, "1h")["age_bars"], 5)
+
+        setup.b2 = 5 * 60_000
+        with patch("app.calculate_setup", return_value=setup):
+            self.assertIsNone(app._recent_fibo_scan(candles, "1h"))
 
     @patch("app.time.time", return_value=100_000)
     def test_stale_xsto_signal_is_hidden(self, _time):

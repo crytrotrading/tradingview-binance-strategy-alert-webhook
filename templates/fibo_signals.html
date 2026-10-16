@@ -46,7 +46,7 @@
   <header>
     <div>
       <h1>Recent RSI Fibo BUY/SELL</h1>
-      <div class="subtitle">ป้าย BUY/SELL แยกทุก TF · เกิน 2 แท่งปิดแล้วซ่อนอัตโนมัติ</div>
+      <div class="subtitle">TF เล็ก 1M–15M แสดงไม่เกิน 10 แท่ง · TF ใหญ่ 1H–1D แสดงไม่เกิน 5 แท่ง</div>
       <nav>
         <a href="/">หน้า 1 · Fibo Retest</a>
         <a href="/smc">หน้า 2 · SMCxSTO</a>
@@ -101,7 +101,7 @@
       const group=grouped.get(item.symbol);group.signals[item.timeframe]=item;group.latest=Math.max(group.latest,item.timestamp||0);
     });
     const groups=[...grouped.values()].sort((a,b)=>b.latest-a.latest);
-    if(!groups.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=timeframes.length+1;cell.textContent="ไม่มี BUY/SELL ใน 2 แท่งล่าสุด";row.appendChild(cell);body.appendChild(row)}
+    if(!groups.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=timeframes.length+1;cell.textContent="ไม่มี BUY/SELL ที่ยังอยู่ในช่วงอายุที่กำหนด";row.appendChild(cell);body.appendChild(row)}
     groups.forEach(group=>{
       const row=document.createElement("tr");row.dataset.search=`${group.display} ${group.symbol}`.toLowerCase();
       const market=document.createElement("td"),name=document.createElement("span"),exchange=document.createElement("span");

@@ -234,6 +234,10 @@ def _scan(candles: list[Candle], pivots: list[tuple[float, int, float]], directi
             high = max(max(candle.high for candle in section), p1, p2)
             if high <= low:
                 continue
+            if direction == "BUY" and candles[-1].close < low:
+                continue
+            if direction == "SELL" and candles[-1].close > high:
+                continue
 
             fib0, fib100 = (low, high) if direction == "BUY" else (high, low)
             entry = low + (high - low) * cfg.entry_pct / 100.0 if direction == "BUY" else high - (high - low) * cfg.entry_pct / 100.0

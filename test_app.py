@@ -41,6 +41,36 @@ class ProviderApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
 
+    @patch("app._recent_fibo_crypto_dashboard", return_value=[{"symbol": "BTCUSDT", "status": "BUY"}])
+    def test_recent_fibo_crypto_endpoint(self, _dashboard):
+        response = self.client.get("/api/fibo-signals/crypto")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["rows"][0]["status"], "BUY")
+
+    def test_recent_fibo_scan_keeps_only_last_two_candles(self):
+        candles = [
+            SimpleNamespace(open_time=index * 60_000)
+            for index in range(5)
+        ]
+        setup = SimpleNamespace(
+            direction="BUY",
+            entry=100,
+            fib0=95,
+            tp1=105,
+            tp2=110,
+            rr=1.5,
+            reason="Bull Div",
+            confirmed_at=2 * 60_000,
+        )
+        with patch("app.calculate_setup", return_value=setup):
+            result = app._recent_fibo_scan(candles, "1m")
+        self.assertEqual(result["age_bars"], 2)
+        self.assertEqual(result["status"], "BUY")
+
+        setup.confirmed_at = 60_000
+        with patch("app.calculate_setup", return_value=setup):
+            self.assertIsNone(app._recent_fibo_scan(candles, "1m"))
+
     @patch("app.time.time", return_value=100_000)
     def test_stale_xsto_signal_is_hidden(self, _time):
         signal = XstoSignal("BUY", 100, 116, 96, 4, 1, 102, 98)

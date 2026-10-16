@@ -22,6 +22,14 @@ BINANCE_API_URL = os.getenv(
     "BINANCE_API_URL", "https://data-api.binance.vision"
 ).rstrip("/")
 TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
+TIMEFRAME_MS = {
+    "1m": 60_000,
+    "5m": 5 * 60_000,
+    "15m": 15 * 60_000,
+    "1h": 60 * 60_000,
+    "4h": 4 * 60 * 60_000,
+    "1d": 24 * 60 * 60_000,
+}
 KLINE_LIMIT = int(os.getenv("KLINE_LIMIT", "1000"))
 CACHE_SECONDS = int(os.getenv("SIGNAL_CACHE_SECONDS", "60"))
 MARKET_CACHE_SECONDS = int(os.getenv("MARKET_CACHE_SECONDS", "300"))
@@ -73,6 +81,7 @@ cache_lock = Lock()
 analysis_cache = {}
 smc_cache = {}
 xsto_cache = {}
+recent_fibo_cache = {}
 market_cache = None
 
 
@@ -382,6 +391,75 @@ def _xsto_mt5_cell(symbol, price):
         return {"status": "!", "price": price, "error": str(exc)}
 
 
+def _recent_fibo_scan(candles, timeframe, max_age_bars=2):
+    setup = calculate_setup(candles)
+    if setup is None or not candles:
+        return None
+    confirmed_index = next(
+        (
+            index
+            for index in range(len(candles) - 1, -1, -1)
+            if candles[index].open_time <= setup.confirmed_at
+        ),
+        -1,
+    )
+    if confirmed_index < 0:
+        return None
+    age_bars = len(candles) - 1 - confirmed_index
+    if age_bars > max_age_bars:
+        return None
+    return {
+        "status": setup.direction,
+        "timeframe": timeframe,
+        "entry": setup.entry,
+        "stop_loss": setup.fib0,
+        "tp1": setup.tp1,
+        "tp2": setup.tp2,
+        "rr": setup.rr,
+        "reason": setup.reason,
+        "timestamp": candles[confirmed_index].open_time + TIMEFRAME_MS[timeframe],
+        "age_bars": age_bars,
+    }
+
+
+def _cached_recent_fibo(key, timeframe, candle_loader):
+    now = time.monotonic()
+    with cache_lock:
+        cached = recent_fibo_cache.get(key)
+        if cached and now - cached[0] < CACHE_SECONDS:
+            return cached[1]
+    result = _recent_fibo_scan(candle_loader(), timeframe)
+    with cache_lock:
+        recent_fibo_cache[key] = (now, result)
+    return result
+
+
+def _recent_fibo_binance_cell(symbol, timeframe, price):
+    try:
+        result = _cached_recent_fibo(
+            ("binance", symbol, timeframe),
+            timeframe,
+            lambda: _closed_candles(symbol, timeframe),
+        )
+        return None if result is None else {**result, "price": price}
+    except Exception as exc:
+        app.logger.warning("Recent Fibo Binance failed %s %s: %s", symbol, timeframe, exc)
+        return None
+
+
+def _recent_fibo_mt5_cell(symbol, timeframe, price):
+    try:
+        result = _cached_recent_fibo(
+            ("mt5", symbol, timeframe),
+            timeframe,
+            lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
+        )
+        return None if result is None else {**result, "price": price}
+    except Exception as exc:
+        app.logger.warning("Recent Fibo MT5 failed %s %s: %s", symbol, timeframe, exc)
+        return None
+
+
 @app.get("/")
 def dashboard():
     return render_template(
@@ -411,6 +489,15 @@ def confluence_dashboard():
 def xsto_dashboard():
     return render_template(
         "xsto.html",
+        refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
+    )
+
+
+@app.get("/fibo-signals")
+def fibo_signals_dashboard():
+    return render_template(
+        "fibo_signals.html",
+        timeframes=TIMEFRAMES,
         refresh_seconds=max(15, int(os.getenv("DASHBOARD_REFRESH_SECONDS", "30"))),
     )
 
@@ -521,6 +608,59 @@ def _xsto_forex_dashboard():
     )
     prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
     rows = _populate_smc_rows(symbols, prices, _xsto_mt5_cell, 8)
+    for row in rows:
+        row["trading_hours"] = sessions_for_symbol(row["display"])
+    return rows
+
+
+def _populate_recent_fibo_rows(symbols, prices, cell_function, max_workers):
+    rows = []
+    with ThreadPoolExecutor(
+        max_workers=min(max_workers, max(1, len(symbols) * len(TIMEFRAMES)))
+    ) as pool:
+        jobs = {
+            pool.submit(
+                cell_function,
+                symbol["exchange"],
+                timeframe,
+                prices.get(symbol["exchange"]),
+            ): (symbol, timeframe)
+            for symbol in symbols
+            for timeframe in TIMEFRAMES
+            if prices.get(symbol["exchange"]) is not None
+        }
+        for future in as_completed(jobs):
+            symbol, _ = jobs[future]
+            result = future.result()
+            if result is not None:
+                rows.append(
+                    {
+                        "symbol": symbol["exchange"],
+                        "display": symbol["display"],
+                        **result,
+                    }
+                )
+    return sorted(rows, key=lambda row: row["timestamp"], reverse=True)
+
+
+def _recent_fibo_crypto_dashboard():
+    symbols = _market_symbols()
+    prices = _current_prices(symbols)
+    return _populate_recent_fibo_rows(
+        symbols, prices, _recent_fibo_binance_cell, 20
+    )
+
+
+def _recent_fibo_forex_dashboard():
+    symbols = (
+        mt5_data.market_watch_symbols()
+        if MT5_USE_MARKET_WATCH
+        else mt5_data.resolve_symbols(FOREX_SYMBOLS)
+    )
+    prices = {item["exchange"]: mt5_data.current_price(item["exchange"]) for item in symbols}
+    rows = _populate_recent_fibo_rows(
+        symbols, prices, _recent_fibo_mt5_cell, 8
+    )
     for row in rows:
         row["trading_hours"] = sessions_for_symbol(row["display"])
     return rows
@@ -755,6 +895,38 @@ def xsto_forex_data():
             {
                 "updated_at": int(time.time() * 1000),
                 "rows": _xsto_forex_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": [],
+                "error": str(exc),
+            }
+        )
+
+
+@app.get("/api/fibo-signals/crypto")
+def recent_fibo_crypto_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _recent_fibo_crypto_dashboard(),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"โหลด Fibo Crypto ไม่สำเร็จ: {exc}"}), 502
+
+
+@app.get("/api/fibo-signals/forex")
+def recent_fibo_forex_data():
+    try:
+        return jsonify(
+            {
+                "updated_at": int(time.time() * 1000),
+                "rows": _recent_fibo_forex_dashboard(),
             }
         )
     except Exception as exc:

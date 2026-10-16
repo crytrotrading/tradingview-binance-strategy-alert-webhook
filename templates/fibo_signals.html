@@ -35,6 +35,11 @@
     .sell { color:#ff9485; background:#ff6b5720; border:1px solid #ff6b576b; }
     .price { color:#9fb0c5; font-variant-numeric:tabular-nums; }
     .empty { color:#536176; }
+    .decision { margin-top:4px; font-weight:800; }
+    .decision-enter { color:#68e0d5; }
+    .decision-wait { color:var(--gold); }
+    .decision-caution { color:#ff9485; }
+    .decision-closed { color:#8fa0b6; }
     .error { color:#ff9485; }
     @media(max-width:1500px){th,td{padding:9px 3px;font-size:9px}.badge{min-width:38px;padding:4px 2px}}
     @media(max-width:1100px){.columns{grid-template-columns:1fr}}
@@ -81,15 +86,25 @@
   const loading={crypto:false,forex:false};
   function number(value){if(value==null)return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:value<10?5:2}).format(value)}
   function signalTime(value){return value?new Intl.DateTimeFormat("th-TH",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(new Date(value)):"—"}
+  function decisionText(value){
+    return{ENTER:"เข้าได้",WAIT:"รอราคา",DONT_CHASE:"ไม่ไล่ราคา",CAUTION:"ระวัง",TP_PASSED:"ยกเลิก · เลย TP",SL_PASSED:"ยกเลิก · เลย SL",SKIP:"ไม่แนะนำ"}[value]||"—";
+  }
+  function decisionClass(value){
+    return value==="ENTER"?"decision-enter":value==="WAIT"||value==="DONT_CHASE"?"decision-wait":value==="TP_PASSED"||value==="SL_PASSED"?"decision-closed":"decision-caution";
+  }
   function signalTitle(item){
     const delta=item.entry?(item.price-item.entry)/item.entry*100:null;
+    const parts=item.score_breakdown||{};
     return[
-      `${item.status} · ${item.timeframe.toUpperCase()} · ${item.reason}`,
+      `${item.status} · ${decisionText(item.decision)} · ${item.score}/100`,
+      `${item.timeframe.toUpperCase()} · ${item.reason} · Trend ${item.trend}`,
       `อายุ ${item.age_bars} แท่ง`,
       `Entry ${number(item.entry)} · ปัจจุบัน ${number(item.price)}`,
       `ห่าง Entry ${delta==null?"—":`${delta>=0?"+":""}${delta.toFixed(2)}%`}`,
+      `ระยะ ${item.distance_r==null?"—":item.distance_r.toFixed(2)+"R"}`,
       `TP1 ${number(item.tp1)} · TP2 ${number(item.tp2)}`,
       `SL ${number(item.stop_loss)} · RR ${number(item.rr)}`,
+      `คะแนน ราคา ${parts.price||0} + Trend ${parts.trend||0} + Setup ${parts.setup||0} + RR ${parts.rr||0} + สดใหม่ ${parts.freshness||0}`,
       `เวลา ${signalTime(item.timestamp)}`
     ].join("\n");
   }
@@ -97,10 +112,10 @@
     const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();
     const grouped=new Map();
     rows.forEach(item=>{
-      if(!grouped.has(item.symbol))grouped.set(item.symbol,{symbol:item.symbol,display:item.display,price:item.price,trading_hours:item.trading_hours,latest:0,signals:{}});
-      const group=grouped.get(item.symbol);group.signals[item.timeframe]=item;group.latest=Math.max(group.latest,item.timestamp||0);
+      if(!grouped.has(item.symbol))grouped.set(item.symbol,{symbol:item.symbol,display:item.display,price:item.price,trading_hours:item.trading_hours,latest:0,maxScore:0,signals:{}});
+      const group=grouped.get(item.symbol);group.signals[item.timeframe]=item;group.latest=Math.max(group.latest,item.timestamp||0);group.maxScore=Math.max(group.maxScore,item.score||0);
     });
-    const groups=[...grouped.values()].sort((a,b)=>b.latest-a.latest);
+    const groups=[...grouped.values()].sort((a,b)=>b.maxScore-a.maxScore||b.latest-a.latest);
     if(!groups.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=timeframes.length+1;cell.textContent="ไม่มี BUY/SELL ที่ยังอยู่ในช่วงอายุที่กำหนด";row.appendChild(cell);body.appendChild(row)}
     groups.forEach(group=>{
       const row=document.createElement("tr");row.dataset.search=`${group.display} ${group.symbol}`.toLowerCase();
@@ -112,7 +127,8 @@
       timeframes.forEach(timeframe=>{
         const cell=document.createElement("td"),item=group.signals[timeframe];
         if(item){const badge=document.createElement("span");badge.className=`badge ${item.status==="BUY"?"buy":"sell"}`;badge.textContent=item.status;badge.title=signalTitle(item);cell.appendChild(badge);
-          const age=document.createElement("span");age.className="subvalue";age.textContent=`${item.age_bars} แท่ง`;cell.appendChild(age);
+          const decision=document.createElement("span");decision.className=`subvalue decision ${decisionClass(item.decision)}`;decision.textContent=`${item.score} · ${decisionText(item.decision)}`;cell.appendChild(decision);
+          const age=document.createElement("span");age.className="subvalue";age.textContent=`${item.age_bars} แท่ง · ${item.distance_r==null?"—":item.distance_r.toFixed(2)+"R"}`;cell.appendChild(age);
         }else{cell.className="empty";cell.textContent="—"}
         row.appendChild(cell);
       });

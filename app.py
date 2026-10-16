@@ -425,8 +425,75 @@ def _recent_fibo_scan(candles, timeframe):
         "tp2": setup.tp2,
         "rr": setup.rr,
         "reason": setup.reason,
+        "trend": classify_ema_trend(candles),
         "timestamp": candles[marker_index].open_time + TIMEFRAME_MS[timeframe],
         "age_bars": age_bars,
+    }
+
+
+def _recent_fibo_decision(result, price):
+    direction = result["status"]
+    entry = result["entry"]
+    stop = result["stop_loss"]
+    risk = abs(entry - stop)
+    if risk <= 0:
+        return {
+            "score": 0,
+            "decision": "SKIP",
+            "distance_r": None,
+            "trend_aligned": False,
+            "score_breakdown": {
+                "price": 0,
+                "trend": 0,
+                "setup": 0,
+                "rr": 0,
+                "freshness": 0,
+            },
+        }
+
+    distance_r = abs(price - entry) / risk
+    price_points = 30 if distance_r <= 0.25 else 20 if distance_r <= 0.5 else 10 if distance_r <= 1 else 0
+    expected_trend = "UP" if direction == "BUY" else "DOWN"
+    trend_aligned = result["trend"] == expected_trend
+    trend_points = 25 if trend_aligned else 10 if result["trend"] == "SIDEWAY" else 0
+    setup_points = 20 if "Div" in result["reason"] else 12
+    rr = result["rr"]
+    rr_points = 15 if rr >= 2 else 10 if rr >= 1.5 else 5 if rr >= 0.8 else 0
+    max_age = RECENT_FIBO_MAX_AGE_BARS[result["timeframe"]]
+    freshness_points = round(10 * max(0, max_age - result["age_bars"]) / max_age)
+    score = price_points + trend_points + setup_points + rr_points + freshness_points
+
+    tp_reached = (
+        price >= result["tp1"] if direction == "BUY" else price <= result["tp1"]
+    )
+    sl_reached = price <= stop if direction == "BUY" else price >= stop
+    favorable_move = price > entry if direction == "BUY" else price < entry
+    if sl_reached:
+        decision = "SL_PASSED"
+    elif tp_reached:
+        decision = "TP_PASSED"
+    elif not trend_aligned and result["trend"] != "SIDEWAY":
+        decision = "CAUTION"
+    elif score >= 75 and distance_r <= 0.25 and trend_aligned:
+        decision = "ENTER"
+    elif favorable_move and distance_r > 0.25:
+        decision = "DONT_CHASE"
+    elif score >= 60:
+        decision = "WAIT"
+    else:
+        decision = "CAUTION"
+    return {
+        "score": score,
+        "decision": decision,
+        "distance_r": distance_r,
+        "trend_aligned": trend_aligned,
+        "score_breakdown": {
+            "price": price_points,
+            "trend": trend_points,
+            "setup": setup_points,
+            "rr": rr_points,
+            "freshness": freshness_points,
+        },
     }
 
 
@@ -449,7 +516,15 @@ def _recent_fibo_binance_cell(symbol, timeframe, price):
             timeframe,
             lambda: _closed_candles(symbol, timeframe),
         )
-        return None if result is None else {**result, "price": price}
+        return (
+            None
+            if result is None
+            else {
+                **result,
+                "price": price,
+                **_recent_fibo_decision(result, price),
+            }
+        )
     except Exception as exc:
         app.logger.warning("Recent Fibo Binance failed %s %s: %s", symbol, timeframe, exc)
         return None
@@ -462,7 +537,15 @@ def _recent_fibo_mt5_cell(symbol, timeframe, price):
             timeframe,
             lambda: mt5_data.closed_candles(symbol, timeframe, KLINE_LIMIT),
         )
-        return None if result is None else {**result, "price": price}
+        return (
+            None
+            if result is None
+            else {
+                **result,
+                "price": price,
+                **_recent_fibo_decision(result, price),
+            }
+        )
     except Exception as exc:
         app.logger.warning("Recent Fibo MT5 failed %s %s: %s", symbol, timeframe, exc)
         return None

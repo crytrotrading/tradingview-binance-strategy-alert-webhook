@@ -80,6 +80,34 @@ class ProviderApiTests(unittest.TestCase):
         with patch("app.calculate_setup", return_value=setup):
             self.assertIsNone(app._recent_fibo_scan(candles, "1h"))
 
+    def test_recent_fibo_decision_scores_entry_and_invalid_levels(self):
+        result = {
+            "status": "BUY",
+            "timeframe": "1m",
+            "entry": 100,
+            "stop_loss": 90,
+            "tp1": 120,
+            "tp2": 130,
+            "rr": 2,
+            "reason": "Bull Div",
+            "trend": "UP",
+            "age_bars": 0,
+        }
+        decision = app._recent_fibo_decision(result, 101)
+        self.assertEqual(decision["score"], 100)
+        self.assertEqual(decision["decision"], "ENTER")
+        self.assertAlmostEqual(decision["distance_r"], 0.1)
+
+        self.assertEqual(
+            app._recent_fibo_decision(result, 121)["decision"],
+            "TP_PASSED",
+        )
+        result["trend"] = "DOWN"
+        self.assertEqual(
+            app._recent_fibo_decision(result, 101)["decision"],
+            "CAUTION",
+        )
+
     @patch("app.time.time", return_value=100_000)
     def test_stale_xsto_signal_is_hidden(self, _time):
         signal = XstoSignal("BUY", 100, 116, 96, 4, 1, 102, 98)

@@ -46,6 +46,13 @@ class ProviderApiTests(unittest.TestCase):
         signal = XstoSignal("BUY", 100, 116, 96, 4, 1, 102, 98)
         self.assertEqual(app._xsto_result(signal, 100)["status"], "—")
 
+    @patch("app.time.time", return_value=100)
+    def test_xsto_result_includes_current_price(self, _time):
+        signal = XstoSignal("BUY", 100, 116, 96, 4, 99_000, 102, 98)
+        result = app._xsto_result(signal, 100.05)
+        self.assertEqual(result["status"], "BUY")
+        self.assertEqual(result["price"], 100.05)
+
     @patch("app.time.time", return_value=100_000)
     def test_stale_smc_market_signal_is_hidden(self, _time):
         signal = SmcSignal("BUY", 100, 110, 96, 2.5, "A", 1, 102, 98)

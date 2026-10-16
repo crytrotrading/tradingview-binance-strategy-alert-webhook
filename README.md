@@ -22,7 +22,8 @@ Fibo zone และมีทิศทาง Fibo ตรงกับ SMC ส่�
 
 หน้า `/xsto` เป็น scanner หน้า 4 จากแพ็กเกจ `xSTO Manual Rebuild v1.0.1`
 ตามค่าเริ่มต้น `M15 Trend / M5 Order Block / M1 Stochastic / RR 1:4` แสดง
-BUY/SELL, Entry, TP, SL, Zone และเวลาสัญญาณสำหรับ Binance และ Windsor MT5
+BUY/SELL, Entry, ราคาปัจจุบันพร้อมระยะห่างเป็นเปอร์เซ็นต์, TP, SL, Zone และ
+เวลาสัญญาณสำหรับ Binance และ Windsor MT5
 แพ็กเกจต้นทางระบุว่าเป็นงานสร้างใหม่จากคู่มือ ไม่ใช่ซอร์สต้นฉบับ SMC by BOSSZ
 
 ## เริ่มใช้งาน

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recent RSI Fibo Signals</title>
+  <style>
+    :root { color-scheme:dark; --bg:#070b12; --panel:#101722; --line:#233044; --muted:#8492a6; --buy:#26a69a; --sell:#ff6b57; --gold:#f7c843; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -20%,#17243a 0,var(--bg) 52%); color:#eef3fa; font:14px/1.5 Inter,system-ui,sans-serif; }
+    main { width:min(1880px,calc(100% - 28px)); margin:auto; padding:28px 0; }
+    header { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:18px; }
+    h1 { margin:0; font-size:clamp(23px,3vw,34px); }
+    .subtitle,.updated { color:var(--muted); font-size:12px; }
+    nav { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    nav a { color:#aebed2; text-decoration:none; padding:6px 10px; border:1px solid var(--line); border-radius:7px; }
+    nav a.active { color:#fff; background:#725b15; border-color:#a88822; }
+    .controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+    .search { padding:10px 13px; border:1px solid var(--line); border-radius:8px; outline:none; background:var(--panel); color:#fff; }
+    .search { width:min(320px,100%); }
+    .columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .panel-heading { display:flex; justify-content:space-between; margin:0 3px 8px; }
+    .panel-heading h2 { margin:0; font-size:16px; }
+    .panel-heading span { color:var(--muted); font-size:12px; }
+    .table-wrap { overflow:hidden; border:1px solid var(--line); border-radius:14px; background:rgba(16,23,34,.95); }
+    table { width:100%; table-layout:fixed; border-collapse:collapse; }
+    th,td { padding:11px 6px; border-bottom:1px solid var(--line); text-align:center; overflow-wrap:anywhere; }
+    th { color:var(--muted); font-size:10px; text-transform:uppercase; }
+    th:first-child,td:first-child { text-align:left; background:var(--panel); }
+    tbody tr:hover td { background-color:#152033; }
+    .symbol { font-weight:800; }
+    .exchange,.session,.subvalue { display:block; color:var(--muted); font-size:9px; line-height:1.35; }
+    .badge { display:inline-flex; min-width:48px; justify-content:center; padding:5px 6px; border-radius:6px; font-size:10px; font-weight:800; }
+    .buy { color:#68e0d5; background:#26a69a24; border:1px solid #26a69a70; }
+    .sell { color:#ff9485; background:#ff6b5720; border:1px solid #ff6b576b; }
+    .price { color:#9fb0c5; font-variant-numeric:tabular-nums; }
+    .empty { color:#536176; }
+    .decision { margin-top:4px; font-weight:800; }
+    .decision-enter { color:#68e0d5; }
+    .decision-wait { color:var(--gold); }
+    .decision-caution { color:#ff9485; }
+    .decision-closed { color:#8fa0b6; }
+    .error { color:#ff9485; }
+    @media(max-width:1500px){th,td{padding:9px 3px;font-size:9px}.badge{min-width:38px;padding:4px 2px}}
+    @media(max-width:1100px){.columns{grid-template-columns:1fr}}
+    @media(max-width:640px){header{align-items:start;flex-direction:column}.controls{align-items:stretch;flex-wrap:wrap}.search{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Recent RSI Fibo BUY/SELL</h1>
+      <div class="subtitle">TF เล็ก 1M–15M แสดงไม่เกิน 10 แท่ง · TF ใหญ่ 1H–1D แสดงไม่เกิน 5 แท่ง</div>
+      <nav>
+        <a href="/">หน้า 1 · Fibo Retest</a>
+        <a href="/smc">หน้า 2 · SMCxSTO</a>
+        <a href="/confluence">หน้า 3 · จุดร่วม</a>
+        <a href="/xsto">หน้า 4 · xSTO</a>
+        <a href="/fibo-signals" class="active">หน้า 5 · Fibo Signals</a>
+      </nav>
+    </div>
+    <div id="updated" class="updated">กำลังโหลด…</div>
+  </header>
+  <div class="controls">
+    <input id="search" class="search" type="search" placeholder="ค้นหา BTC, EURUSD, XAU…">
+  </div>
+  <div class="columns">
+    {% for provider, title in [("crypto","Crypto · Binance"),("forex","Forex · Windsor MT5")] %}
+    <section>
+      <div class="panel-heading"><h2>{{ title }}</h2><span id="{{ provider }}-count">กำลังโหลด…</span></div>
+      <div class="table-wrap">
+        <table>
+          <colgroup><col style="width:28%">{% for timeframe in timeframes %}<col style="width:12%">{% endfor %}</colgroup>
+          <thead><tr><th>Market</th>{% for timeframe in timeframes %}<th>{{ timeframe | upper }}</th>{% endfor %}</tr></thead>
+          <tbody id="{{ provider }}-rows"><tr id="{{ provider }}-loading"><td colspan="{{ timeframes | length + 1 }}">กำลังสแกนทุก Timeframe…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</main>
+<script>
+  const refreshMs={{ refresh_seconds }}*1000;
+  const timeframes={{ timeframes | tojson }};
+  const loading={crypto:false,forex:false};
+  function number(value){if(value==null)return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:value<10?5:2}).format(value)}
+  function signalTime(value){return value?new Intl.DateTimeFormat("th-TH",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(new Date(value)):"—"}
+  function decisionText(value){
+    return{ENTER:"เข้าได้",WAIT:"รอราคา",DONT_CHASE:"ไม่ไล่ราคา",CAUTION:"ระวัง",TP_PASSED:"ยกเลิก · เลย TP",SL_PASSED:"ยกเลิก · เลย SL",SKIP:"ไม่แนะนำ"}[value]||"—";
+  }
+  function decisionClass(value){
+    return value==="ENTER"?"decision-enter":value==="WAIT"||value==="DONT_CHASE"?"decision-wait":value==="TP_PASSED"||value==="SL_PASSED"?"decision-closed":"decision-caution";
+  }
+  function signalTitle(item){
+    const delta=item.entry?(item.price-item.entry)/item.entry*100:null;
+    const parts=item.score_breakdown||{};
+    return[
+      `${item.status} · ${decisionText(item.decision)} · ${item.score}/100`,
+      `${item.timeframe.toUpperCase()} · ${item.reason} · Trend ${item.trend}`,
+      `อายุ ${item.age_bars} แท่ง`,
+      `Entry ${number(item.entry)} · ปัจจุบัน ${number(item.price)}`,
+      `ห่าง Entry ${delta==null?"—":`${delta>=0?"+":""}${delta.toFixed(2)}%`}`,
+      `ระยะ ${item.distance_r==null?"—":item.distance_r.toFixed(2)+"R"}`,
+      `TP1 ${number(item.tp1)} · TP2 ${number(item.tp2)}`,
+      `SL ${number(item.stop_loss)} · RR ${number(item.rr)}`,
+      `คะแนน ราคา ${parts.price||0} + Trend ${parts.trend||0} + Setup ${parts.setup||0} + RR ${parts.rr||0} + สดใหม่ ${parts.freshness||0}`,
+      `เวลา ${signalTime(item.timestamp)}`
+    ].join("\n");
+  }
+  function render(provider,rows){
+    const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();
+    const grouped=new Map();
+    rows.forEach(item=>{
+      if(!grouped.has(item.symbol))grouped.set(item.symbol,{symbol:item.symbol,display:item.display,price:item.price,trading_hours:item.trading_hours,latest:0,maxScore:0,signals:{}});
+      const group=grouped.get(item.symbol);group.signals[item.timeframe]=item;group.latest=Math.max(group.latest,item.timestamp||0);group.maxScore=Math.max(group.maxScore,item.score||0);
+    });
+    const groups=[...grouped.values()].sort((a,b)=>b.maxScore-a.maxScore||b.latest-a.latest);
+    if(!groups.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=timeframes.length+1;cell.textContent="ไม่มี BUY/SELL ที่ยังอยู่ในช่วงอายุที่กำหนด";row.appendChild(cell);body.appendChild(row)}
+    groups.forEach(group=>{
+      const row=document.createElement("tr");row.dataset.search=`${group.display} ${group.symbol}`.toLowerCase();
+      const market=document.createElement("td"),name=document.createElement("span"),exchange=document.createElement("span");
+      name.className="symbol";name.textContent=group.display;exchange.className="exchange";exchange.textContent=group.symbol;market.append(name,exchange);
+      const price=document.createElement("span");price.className="subvalue price";price.textContent=`ราคา ${number(group.price)}`;market.appendChild(price);
+      if(provider==="forex"&&group.trading_hours?.primary){const session=document.createElement("span");session.className="session";session.textContent=`เวลา ${group.trading_hours.primary}`;market.appendChild(session)}
+      row.appendChild(market);
+      timeframes.forEach(timeframe=>{
+        const cell=document.createElement("td"),item=group.signals[timeframe];
+        if(item){const badge=document.createElement("span");badge.className=`badge ${item.status==="BUY"?"buy":"sell"}`;badge.textContent=item.status;badge.title=signalTitle(item);cell.appendChild(badge);
+          const decision=document.createElement("span");decision.className=`subvalue decision ${decisionClass(item.decision)}`;decision.textContent=`${item.score} · ${decisionText(item.decision)}`;cell.appendChild(decision);
+          const age=document.createElement("span");age.className="subvalue";age.textContent=`${item.age_bars} แท่ง · ${item.distance_r==null?"—":item.distance_r.toFixed(2)+"R"}`;cell.appendChild(age);
+        }else{cell.className="empty";cell.textContent="—"}
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    filter(provider);
+  }
+  function filter(provider){
+    const query=document.querySelector("#search").value.trim().toLowerCase();
+    const rows=[...document.querySelectorAll(`#${provider}-rows tr[data-search]`)];let shown=0;
+    rows.forEach(row=>{const visible=!query||row.dataset.search.includes(query);row.hidden=!visible;if(visible)shown++});
+    const signals=rows.filter(row=>!row.hidden).reduce((total,row)=>total+row.querySelectorAll(".badge").length,0);
+    document.querySelector(`#${provider}-count`).textContent=`แสดง ${shown} คู่ · ${signals} สัญญาณ`;
+  }
+  async function update(provider){
+    if(loading[provider])return;loading[provider]=true;
+    try{
+      const response=await fetch(`/api/fibo-signals/${provider}`,{cache:"no-store"}),data=await response.json();
+      if(!response.ok||data.error)throw new Error(data.error||"โหลดไม่สำเร็จ");render(provider,data.rows||[]);
+      document.querySelector("#updated").textContent="อัปเดต "+new Date(data.updated_at).toLocaleTimeString("th-TH");
+    }catch(error){
+      const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();const row=document.createElement("tr"),cell=document.createElement("td");
+      cell.colSpan=timeframes.length+1;cell.className="error";cell.textContent=error.message;row.appendChild(cell);body.appendChild(row);document.querySelector(`#${provider}-count`).textContent="เชื่อมต่อไม่ได้";
+    }finally{loading[provider]=false}
+  }
+  function updateAll(){update("crypto");update("forex")}
+  document.querySelector("#search").addEventListener("input",()=>{filter("crypto");filter("forex")});
+  updateAll();setInterval(updateAll,refreshMs);
+</script>
+</body>
+</html>

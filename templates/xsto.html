@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>xSTO Monitor</title>
+  <style>
+    :root { color-scheme:dark; --bg:#070b12; --panel:#101722; --line:#233044; --muted:#8492a6; --buy:#26a69a; --sell:#ff6b57; --gold:#f7c843; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -20%,#17243a 0,var(--bg) 52%); color:#eef3fa; font:14px/1.5 Inter,system-ui,sans-serif; }
+    main { width:min(1880px,calc(100% - 28px)); margin:auto; padding:28px 0; }
+    header { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:18px; }
+    h1 { margin:0; font-size:clamp(23px,3vw,34px); }
+    .subtitle,.updated,.notice { color:var(--muted); font-size:12px; }
+    .notice { margin-top:5px; color:#d5b967; }
+    nav { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    nav a { color:#aebed2; text-decoration:none; padding:6px 10px; border:1px solid var(--line); border-radius:7px; }
+    nav a.active { color:#fff; background:#725b15; border-color:#a88822; }
+    .controls { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .search { width:min(320px,100%); padding:10px 13px; border:1px solid var(--line); border-radius:8px; outline:none; background:var(--panel); color:#fff; }
+    .toggle { display:flex; align-items:center; gap:7px; color:#bdc9d8; }
+    .toggle input { accent-color:var(--buy); }
+    .columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .panel-heading { display:flex; justify-content:space-between; margin:0 3px 8px; }
+    .panel-heading h2 { margin:0; font-size:16px; }
+    .panel-heading span { color:var(--muted); font-size:12px; }
+    .table-wrap { overflow:hidden; border:1px solid var(--line); border-radius:14px; background:rgba(16,23,34,.95); }
+    table { width:100%; table-layout:fixed; border-collapse:collapse; }
+    th,td { padding:11px 7px; border-bottom:1px solid var(--line); text-align:right; overflow-wrap:anywhere; }
+    th { color:var(--muted); font-size:11px; text-transform:uppercase; }
+    th:first-child,td:first-child { text-align:left; background:var(--panel); }
+    tbody tr:hover td { background-color:#152033; }
+    .symbol { font-weight:800; }
+    .exchange,.session { display:block; color:var(--muted); font-size:9px; }
+    .badge { display:inline-flex; min-width:54px; justify-content:center; padding:5px 8px; border-radius:6px; font-size:11px; font-weight:800; }
+    .buy { color:#68e0d5; background:#26a69a24; border:1px solid #26a69a70; }
+    .sell { color:#ff9485; background:#ff6b5720; border:1px solid #ff6b576b; }
+    .empty { color:#536176; }
+    .error { color:#ff9485; }
+    .price { font-variant-numeric:tabular-nums; }
+    .zone { color:var(--gold); }
+    .distance { display:block; margin-top:3px; font-size:9px; font-weight:800; }
+    .distance-near { color:#68e0d5; }
+    .distance-medium { color:#f7c843; }
+    .distance-far { color:#ff9485; }
+    @media(max-width:1500px){th,td{padding:9px 3px;font-size:9px}.badge{min-width:40px;padding:4px 2px}}
+    @media(max-width:1100px){.columns{grid-template-columns:1fr}}
+    @media(max-width:640px){header{align-items:start;flex-direction:column}.controls{align-items:stretch;flex-wrap:wrap}.search{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>xSTO Manual Rebuild Monitor</h1>
+      <div class="subtitle">M15 Trend · M5 Order Block · M1 Stochastic · RR 1:4</div>
+      <div class="notice">สร้างตามแพ็กเกจ Manual Rebuild v1.0.1 — ไม่ใช่ซอร์สต้นฉบับ SMC by BOSSZ</div>
+      <nav>
+        <a href="/">หน้า 1 · Fibo Retest</a>
+        <a href="/smc">หน้า 2 · SMCxSTO</a>
+        <a href="/confluence">หน้า 3 · จุดร่วม</a>
+        <a href="/xsto" class="active">หน้า 4 · xSTO</a>
+        <a href="/fibo-signals">หน้า 5 · Fibo Signals</a>
+      </nav>
+    </div>
+    <div id="updated" class="updated">กำลังโหลด…</div>
+  </header>
+  <div class="controls">
+    <input id="search" class="search" type="search" placeholder="ค้นหา BTC, EURUSD, XAU…">
+    <label class="toggle"><input id="active-only" type="checkbox" checked> เฉพาะคู่ที่มี BUY/SELL</label>
+  </div>
+  <div class="columns">
+    {% for provider, title in [("crypto","Crypto · Binance"),("forex","Forex · Windsor MT5")] %}
+    <section>
+      <div class="panel-heading"><h2>{{ title }}</h2><span id="{{ provider }}-count">กำลังโหลด…</span></div>
+      <div class="table-wrap">
+        <table>
+          <colgroup><col style="width:15%"><col style="width:9%"><col style="width:11%"><col style="width:14%"><col style="width:11%"><col style="width:11%"><col style="width:17%"><col style="width:5%"><col style="width:7%"></colgroup>
+          <thead><tr><th>Market</th><th>Signal</th><th>Entry</th><th>ราคาปัจจุบัน / Δ</th><th>TP</th><th>SL</th><th>Zone</th><th>RR</th><th>เวลา (ไทย)</th></tr></thead>
+          <tbody id="{{ provider }}-rows"><tr id="{{ provider }}-loading"><td colspan="9">กำลังคำนวณ xSTO…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</main>
+<script>
+  const refreshMs={{ refresh_seconds }}*1000;
+  const loading={crypto:false,forex:false};
+  function number(value){if(value==null)return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:value<10?5:2}).format(value)}
+  function signalTime(value){return value?new Intl.DateTimeFormat("th-TH",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(new Date(value)):"—"}
+  function currentState(item){
+    if(item.price==null||item.entry==null)return"—";
+    if(item.status==="BUY"&&item.price>=item.take_profit||item.status==="SELL"&&item.price<=item.take_profit)return"ราคาปัจจุบันเลย TP";
+    if(item.status==="BUY"&&item.price<=item.stop_loss||item.status==="SELL"&&item.price>=item.stop_loss)return"ราคาปัจจุบันเลย SL";
+    const delta=(item.price-item.entry)/item.entry*100;
+    return`${delta>=0?"+":""}${delta.toFixed(2)}% จาก Entry`;
+  }
+  function distanceClass(item){
+    if(item.price==null||item.entry==null)return"distance-far";
+    const distance=Math.abs((item.price-item.entry)/item.entry*100);
+    return distance<=0.1?"distance-near":distance<=0.5?"distance-medium":"distance-far";
+  }
+  function rowFor(provider,item,rank){
+    const body=document.querySelector(`#${provider}-rows`);
+    let row=[...body.querySelectorAll("tr[data-symbol]")].find(element=>element.dataset.symbol===item.symbol);
+    if(!row){row=document.createElement("tr");row.dataset.symbol=item.symbol;for(let i=0;i<9;i++)row.appendChild(document.createElement("td"));body.appendChild(row)}
+    row.dataset.rank=rank;row.dataset.active=item.status==="BUY"||item.status==="SELL"?"1":"0";
+    row.dataset.timestamp=item.timestamp||"0";row.dataset.search=`${item.display} ${item.symbol}`.toLowerCase();
+    const cells=row.children;cells[0].replaceChildren();
+    const name=document.createElement("span");name.className="symbol";name.textContent=item.display;
+    const exchange=document.createElement("span");exchange.className="exchange";exchange.textContent=item.symbol;cells[0].append(name,exchange);
+    if(provider==="forex"&&item.trading_hours?.primary){const session=document.createElement("span");session.className="session";session.textContent=`เวลา ${item.trading_hours.primary}`;cells[0].appendChild(session)}
+    cells[1].replaceChildren();const badge=document.createElement("span");
+    badge.className=`badge ${item.status==="BUY"?"buy":item.status==="SELL"?"sell":item.error?"error":"empty"}`;badge.textContent=item.status||"—";cells[1].appendChild(badge);
+    cells[2].textContent=number(item.entry);
+    cells[3].replaceChildren(document.createTextNode(number(item.price)));const distance=document.createElement("span");
+    distance.className=`distance ${distanceClass(item)}`;distance.textContent=currentState(item);cells[3].appendChild(distance);
+    cells[4].textContent=number(item.take_profit);cells[5].textContent=number(item.stop_loss);
+    cells[6].textContent=item.zone_bottom==null?"—":`${number(item.zone_bottom)} – ${number(item.zone_top)}`;cells[6].className="zone";
+    cells[7].textContent=item.rr?`1:${number(item.rr)}`:"—";cells[8].textContent=signalTime(item.timestamp);
+    for(const index of [2,3,4,5,7,8])cells[index].classList.add("price");
+    if(item.error)row.title=item.error;
+  }
+  function filterSort(provider){
+    const body=document.querySelector(`#${provider}-rows`),query=document.querySelector("#search").value.trim().toLowerCase(),only=document.querySelector("#active-only").checked;
+    const rows=[...body.querySelectorAll("tr[data-symbol]")];let shown=0;
+    rows.forEach(row=>{const visible=(!query||row.dataset.search.includes(query))&&(!only||row.dataset.active==="1");row.hidden=!visible;if(visible)shown++});
+    rows.sort((a,b)=>Number(b.dataset.active)-Number(a.dataset.active)||Number(b.dataset.timestamp)-Number(a.dataset.timestamp)||Number(a.dataset.rank)-Number(b.dataset.rank)).forEach(row=>body.appendChild(row));
+    document.querySelector(`#${provider}-count`).textContent=`แสดง ${shown} / ${rows.length} คู่`;
+  }
+  async function update(provider){
+    if(loading[provider])return;loading[provider]=true;
+    try{
+      const response=await fetch(`/api/xsto/${provider}`,{cache:"no-store"}),data=await response.json();
+      if(!response.ok)throw new Error(data.error||"โหลดไม่สำเร็จ");
+      if(data.error&&!(data.rows||[]).length)throw new Error(data.error);
+      document.querySelector(`#${provider}-loading`)?.remove();
+      const body=document.querySelector(`#${provider}-rows`),active=new Set((data.rows||[]).map(item=>item.symbol));
+      body.querySelectorAll("tr[data-symbol]").forEach(row=>{if(!active.has(row.dataset.symbol))row.remove()});
+      (data.rows||[]).forEach((item,rank)=>rowFor(provider,item,rank));filterSort(provider);
+      document.querySelector("#updated").textContent="อัปเดต "+new Date(data.updated_at).toLocaleTimeString("th-TH");
+    }catch(error){
+      const body=document.querySelector(`#${provider}-rows`);body.replaceChildren();const row=document.createElement("tr"),cell=document.createElement("td");
+      cell.colSpan=9;cell.className="error";cell.textContent=error.message;row.appendChild(cell);body.appendChild(row);document.querySelector(`#${provider}-count`).textContent="เชื่อมต่อไม่ได้";
+    }finally{loading[provider]=false}
+  }
+  function updateAll(){update("crypto");update("forex")}
+  document.querySelector("#search").addEventListener("input",()=>{filterSort("crypto");filterSort("forex")});
+  document.querySelector("#active-only").addEventListener("change",()=>{filterSort("crypto");filterSort("forex")});
+  updateAll();setInterval(updateAll,refreshMs);
+</script>
+</body>
+</html>

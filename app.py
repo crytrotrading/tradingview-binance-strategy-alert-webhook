@@ -395,17 +395,17 @@ def _recent_fibo_scan(candles, timeframe, max_age_bars=2):
     setup = calculate_setup(candles)
     if setup is None or not candles:
         return None
-    confirmed_index = next(
+    marker_index = next(
         (
             index
             for index in range(len(candles) - 1, -1, -1)
-            if candles[index].open_time <= setup.confirmed_at
+            if candles[index].open_time <= setup.b2
         ),
         -1,
     )
-    if confirmed_index < 0:
+    if marker_index < 0:
         return None
-    age_bars = len(candles) - 1 - confirmed_index
+    age_bars = len(candles) - 1 - marker_index
     if age_bars > max_age_bars:
         return None
     return {
@@ -417,7 +417,7 @@ def _recent_fibo_scan(candles, timeframe, max_age_bars=2):
         "tp2": setup.tp2,
         "rr": setup.rr,
         "reason": setup.reason,
-        "timestamp": candles[confirmed_index].open_time + TIMEFRAME_MS[timeframe],
+        "timestamp": candles[marker_index].open_time + TIMEFRAME_MS[timeframe],
         "age_bars": age_bars,
     }
 
